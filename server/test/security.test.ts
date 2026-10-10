@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   createRedactor,
   createSecretBox,
+  generateSetupCode,
   generateToken,
   REDACTED,
+  setupCodesMatch,
   tokenHint,
   tokensMatch,
 } from '../src/security/index.js';
@@ -48,6 +50,20 @@ describe('tokens', () => {
   });
 });
 
+describe('setup code', () => {
+  it('generates readable 12-character codes in groups of four', () => {
+    const code = generateSetupCode();
+    expect(code).toMatch(/^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/);
+    expect(generateSetupCode()).not.toBe(code);
+  });
+
+  it('matches regardless of case, spaces, and dashes', () => {
+    expect(setupCodesMatch('abcd efgh-jkmn', 'ABCD-EFGH-JKMN')).toBe(true);
+    expect(setupCodesMatch('ABCD-EFGH-JKMM', 'ABCD-EFGH-JKMN')).toBe(false);
+    expect(setupCodesMatch('', 'ABCD-EFGH-JKMN')).toBe(false);
+  });
+});
+
 describe('redactor', () => {
   const redact = createRedactor();
 
@@ -63,6 +79,31 @@ describe('redactor', () => {
       title: 'hi',
       apiKey: REDACTED,
       nested: [{ PASSWORD: REDACTED, keep: 1 }],
+    });
+  });
+
+  it('masks any field whose name contains a secret word', () => {
+    const raw = JSON.stringify({
+      client_secret: 'a',
+      refresh_token: 'b',
+      botToken: 'c',
+      webhookPassword: 'd',
+      passwd: 'e',
+      privateKey: 'f',
+      'aws.credentials': 'g',
+      author: 'kept',
+      title: 'kept',
+    });
+    expect(JSON.parse(redact.body(raw, 'application/json'))).toEqual({
+      client_secret: REDACTED,
+      refresh_token: REDACTED,
+      botToken: REDACTED,
+      webhookPassword: REDACTED,
+      passwd: REDACTED,
+      privateKey: REDACTED,
+      'aws.credentials': REDACTED,
+      author: 'kept',
+      title: 'kept',
     });
   });
 

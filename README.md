@@ -9,7 +9,7 @@ Self-hosted webhook router for Discord. Point all your services at one endpoint;
 ## Quick start
 
 1. On the Proxmox host, run the install command (below).
-2. Open `http://<lxc-ip>:8080`, create the admin login, paste your Discord bot token, and pick your server.
+2. Open `http://<lxc-ip>:8080`, enter the setup code the installer printed, create the admin login, paste your Discord bot token, and pick your server.
 3. Add a source, choose its adapter, and paste the generated URL into the service.
 
 ```bash
@@ -117,7 +117,9 @@ RestartSec=3
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
+ProtectHome=true
 ReadWritePaths=/opt/notify-hub /var/lib/notify-hub
+UMask=0027
 
 [Install]
 WantedBy=multi-user.target
@@ -624,11 +626,12 @@ The hub holds your bot token and routing, so it is LAN-first, authenticates ever
 | Concern | Approach |
 | --- | --- |
 | Ingest authentication | Per-source random token, stored encrypted and compared in constant time; wrong tokens are discarded and logged |
-| Admin login | Local account with an Argon2 password hash and a secure session cookie |
+| First-run setup | Creating the admin account needs a one-time code from the hub log (installer output or `journalctl -u notify-hub`), so nobody else on the network, or a website using DNS rebinding, can claim the hub first |
+| Admin login | Local account with an Argon2 password hash; HttpOnly, SameSite=Strict session cookie whose id is stored only as a hash; addresses are blocked for 10 minutes after 5 failed logins; changes sent from other sites are refused |
 | Remote UI access | Cloudflare Tunnel plus Access in front of a localhost-only listener |
 | Public exposure | Nothing inbound; `/hook/*` is not served on the tunnel listener |
 | Secrets at rest | AES-256-GCM with a key from `APP_SECRET` |
-| Payload redaction | Configurable header and field names (authorization, apikey, token, password) masked before storage and display |
+| Payload redaction | Any header or field whose name contains authorization, cookie, password, passwd, secret, token, apikey, privatekey, or credential is masked before storage |
 | Request limits | Body size cap, per-source rate limit, request timeout, address blocking for bad tokens |
 | Discord permissions | View channel, send messages, and embed links only |
 | Service account | Unprivileged `notifyhub` user with systemd hardening and no Docker socket |
@@ -741,14 +744,15 @@ Copy `.env.example` to `.env` and set `APP_SECRET` (the file shows a command tha
 
 ```bash
 npm install
-npm run seed       # temporary: saves the bot token, server, one source, and one route
 npm run dev        # hub on http://localhost:8080, restarts on changes
-npm run dev:web    # web UI on http://localhost:5173
+npm run dev:web    # web UI with hot reload on http://localhost:5173, API calls go to the hub
 npm test
 npm run lint
 npm run format     # Prettier
 npm run build      # compiles to dist/; npm start runs the build
 ```
+
+Open the web UI and follow the first-run setup: admin account, bot token, server, and a test channel. After `npm run build`, the hub on port 8080 also serves the built UI. `npm run seed` still exists as a temporary command-line alternative until the Sources page arrives.
 
 Database changes: edit `server/src/db/schema.ts`, then run `npm run db:generate -w @notify-hub/server` to write the next numbered migration into `server/migrations/`. Migrations run when the hub starts.
 

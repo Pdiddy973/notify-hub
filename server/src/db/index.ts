@@ -1,9 +1,6 @@
-import type { Embed, StandardMessage } from '@notify-hub/shared';
+import type { DeliveryStatus, Embed, MessageStatus, Severity, StandardMessage } from '@notify-hub/shared';
 
-export type MessageStatus =
-  'received' | 'normalized' | 'queued' | 'delivered' | 'failed' | 'unrouted' | 'dropped';
-
-export type DeliveryStatus = 'queued' | 'sending' | 'sent' | 'failed';
+export type { DeliveryStatus, MessageStatus };
 
 export type DiscardReason = 'wrong token' | 'missing token' | 'unknown source' | 'disabled source';
 
@@ -76,10 +73,30 @@ export interface DiscardRow extends DiscardEntry {
   repeatCount: number;
 }
 
+export interface Session {
+  createdAt: string;
+  expiresAt: string;
+}
+
+// Filters for listing messages, newest first.
+export interface MessageFilter {
+  source?: string;
+  status?: MessageStatus;
+  severity?: Severity;
+  // Matched against the raw payload, the normalized messages, and the error.
+  q?: string;
+  before?: number;
+  limit: number;
+}
+
 export const settingKeys = {
   // Encrypted.
   discordToken: 'discord.token',
   discordGuildId: 'discord.guildId',
+  adminUsername: 'admin.username',
+  adminPasswordHash: 'admin.passwordHash',
+  // ISO time the first-run setup finished.
+  setupCompletedAt: 'setup.completedAt',
 } as const;
 
 export type MessageChanges = Partial<Pick<StoredMessage, 'status' | 'normalized' | 'error'>>;
@@ -94,6 +111,7 @@ export interface Database {
 
   getSource(id: string): Source | undefined;
   saveSource(source: Source): void;
+  listSources(): Omit<Source, 'token' | 'config'>[];
 
   listRoutes(sourceId: string): Route[];
   replaceRoutes(sourceId: string, routes: Omit<Route, 'id' | 'sourceId'>[]): void;
@@ -107,6 +125,9 @@ export interface Database {
   updateMessage(id: number, changes: MessageChanges): void;
   // Ids in the order received.
   listMessageIds(status: MessageStatus): number[];
+  listMessages(filter: MessageFilter): StoredMessage[];
+  // Deliveries of several messages, in id order.
+  listDeliveriesFor(messageIds: number[]): Delivery[];
 
   insertDelivery(delivery: Omit<Delivery, 'id'>): Delivery;
   getDelivery(id: number): Delivery | undefined;
@@ -118,6 +139,13 @@ export interface Database {
 
   recordDiscard(entry: DiscardEntry): void;
   listDiscarded(): DiscardRow[];
+
+  // Sessions are stored by the SHA-256 of their id.
+  createSession(idHash: string, session: Session & { userAgent?: string }): void;
+  getSession(idHash: string): Session | undefined;
+  deleteSession(idHash: string): void;
+  // Removes sessions that expired before the given time.
+  pruneSessions(now: string): number;
 }
 
 export { createSqliteDatabase, openSqlite, type SqliteHandle } from './sqlite.js';

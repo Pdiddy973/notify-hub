@@ -41,3 +41,5 @@ export function createBotApi({ db, queue }: BotApiDeps): BotApi {
     },
   };
 }
+
+export { registerAdminApi, TEST_SOURCE_ID, type AdminApiDeps, type DiscordControl } from './routes.js';

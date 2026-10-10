@@ -1,12 +1,24 @@
 import { vi } from 'vitest';
 import { createSqliteDatabase, openSqlite, settingKeys } from '../../src/db/index.js';
-import type { DiscordConnection, DiscordSender } from '../../src/discord/index.js';
+import {
+  DiscordTokenRejected,
+  type ConnectOptions,
+  type DiscordConnection,
+  type DiscordRest,
+  type DiscordSender,
+} from '../../src/discord/index.js';
 import { createHub } from '../../src/hub.js';
 import { createSecretBox } from '../../src/security/index.js';
 
 export const APP_SECRET = 'test-secret-'.repeat(4);
 export const SOURCE_ID = 'sonarr-main';
 export const SOURCE_TOKEN = 'source-token-0123456789';
+export const SETUP_CODE = 'ABCD-EFGH-JKMN';
+export const ADMIN = { username: 'admin', password: 'correct horse battery' };
+// Shaped like a bot token; not a real one.
+export const BOT_TOKEN = `${Buffer.from('123456789012345678').toString('base64url')}.GhIjKl.${'a'.repeat(38)}`;
+export const GUILD_ID = '111111111111111111';
+export const CHANNEL_ID = '222222222222222222';
 
 export interface TestHubOptions {
   // Whether the fake bot reports itself connected.
@@ -14,6 +26,8 @@ export interface TestHubOptions {
   // Whether a bot token and guild are saved.
   configured?: boolean;
   bodyLimitBytes?: number;
+  webRoot?: string;
+  keepAliveMs?: number;
 }
 
 // A full hub on an in-memory database, with one source and route and a fake Discord connection.
@@ -21,12 +35,14 @@ export function createTestHub({
   ready = true,
   configured = true,
   bodyLimitBytes = 4096,
+  webRoot,
+  keepAliveMs,
 }: TestHubOptions = {}) {
   const sqlite = openSqlite(':memory:');
   const db = createSqliteDatabase(sqlite, createSecretBox(APP_SECRET));
   if (configured) {
-    db.setSetting(settingKeys.discordToken, 'bot-token', { encrypted: true });
-    db.setSetting(settingKeys.discordGuildId, 'guild-1');
+    db.setSetting(settingKeys.discordToken, BOT_TOKEN, { encrypted: true });
+    db.setSetting(settingKeys.discordGuildId, GUILD_ID);
   }
   db.saveSource({
     id: SOURCE_ID,
@@ -41,14 +57,40 @@ export function createTestHub({
   let isReady = ready;
   let sent = 0;
   const send = vi.fn<DiscordSender['send']>(async () => ({ messageId: `discord-${++sent}` }));
-  const connect = vi.fn((): DiscordConnection => ({
+  const connect = vi.fn(({ api, guildId }: ConnectOptions): DiscordConnection => ({
     sender: { send },
     isReady: () => isReady,
-    syncChannels: async () => 0,
+    botUser: () => (isReady ? 'NotifyBot' : undefined),
+    guildName: () => (isReady ? 'Homelab' : undefined),
+    async syncChannels() {
+      await api.saveChannels(guildId, [{ id: CHANNEL_ID, name: 'alerts', type: 'GuildText' }]);
+      return 1;
+    },
     destroy: async () => {},
   }));
+  const discordRest: DiscordRest = {
+    async verifyToken(token) {
+      if (token !== BOT_TOKEN) throw new DiscordTokenRejected();
+      return {
+        botUser: 'NotifyBot',
+        botId: '123456789012345678',
+        guilds: [{ id: GUILD_ID, name: 'Homelab' }],
+      };
+    },
+  };
 
-  const start = () => createHub({ sqlite, appSecret: APP_SECRET, bodyLimitBytes, connect, idleMs: 5 });
+  const start = () =>
+    createHub({
+      sqlite,
+      appSecret: APP_SECRET,
+      bodyLimitBytes,
+      connect,
+      discordRest,
+      webRoot,
+      idleMs: 5,
+      keepAliveMs,
+      setupCode: SETUP_CODE,
+    });
   let hub = start();
 
   return {
@@ -88,4 +130,19 @@ export function postHook(hub: TestHub, body: unknown, { token = SOURCE_TOKEN, so
     headers: { 'content-type': 'application/json' },
     payload: typeof body === 'string' ? body : JSON.stringify(body),
   });
+}
+
+// Creates the admin account on first use, otherwise logs in; returns the cookie header.
+export async function login(hub: TestHub): Promise<string> {
+  const session = (await hub.app.inject({ method: 'GET', url: '/api/session' })).json<{
+    hasAdmin: boolean;
+  }>();
+  const response = await hub.app.inject({
+    method: 'POST',
+    url: session.hasAdmin ? '/api/login' : '/api/setup/account',
+    payload: session.hasAdmin ? ADMIN : { ...ADMIN, setupCode: SETUP_CODE },
+  });
+  const cookie = response.cookies.find((c) => c.name === 'nh_session');
+  if (!cookie) throw new Error(`Login failed: ${response.statusCode} ${response.body}`);
+  return `nh_session=${cookie.value}`;
 }

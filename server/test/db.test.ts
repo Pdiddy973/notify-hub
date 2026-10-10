@@ -32,6 +32,7 @@ describe('sqlite database', () => {
       'messages',
       'routes',
       'samples',
+      'sessions',
       'settings',
       'sources',
       'updates',

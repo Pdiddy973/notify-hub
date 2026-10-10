@@ -22,6 +22,7 @@ UNIT_FILE=/etc/systemd/system/notify-hub.service
 KEEP_RELEASES=3
 
 TAG=""
+SERVICE_STARTED=""
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
@@ -158,13 +159,16 @@ RestartSec=3
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
+ProtectHome=true
 ReadWritePaths=$APP_DIR $DATA_DIR
+UMask=0027
 
 [Install]
 WantedBy=multi-user.target
 EOF
   systemctl daemon-reload
   systemctl enable --quiet notify-hub
+  SERVICE_STARTED="$(date '+%Y-%m-%d %H:%M:%S')"
   systemctl restart notify-hub
 }
 
@@ -176,11 +180,26 @@ wait_for_health() {
     if curl -fsS "http://127.0.0.1:$port/health" >/dev/null 2>&1; then
       ip="$(hostname -I | awk '{print $1}')"
       log "Notify Hub $TAG is running at http://$ip:$port"
+      show_setup_code
       return
     fi
     sleep 1
   done
   die "the service did not answer on /health; see: journalctl -u notify-hub -n 50"
+}
+
+# Prints the one-time code the hub logs while no admin account exists.
+show_setup_code() {
+  local code=""
+  for _ in $(seq 1 5); do
+    code="$(journalctl -u notify-hub --since "$SERVICE_STARTED" --no-pager -o cat 2>/dev/null |
+      grep -oE 'First-run setup code: [0-9A-Z-]+' | tail -n 1 | sed 's/.*: //')"
+    if [[ -n "$code" ]]; then break; fi
+    sleep 1
+  done
+  if [[ -n "$code" ]]; then
+    log "First-run setup code: $code (the setup page asks for it)"
+  fi
 }
 
 check_system

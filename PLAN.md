@@ -729,9 +729,9 @@ git push origin v0.1.0
 
 **Phase 2: Web UI shell and live log**
 
-- [ ] Admin login and first-run setup flow with token entry
-- [ ] Live log page with filters and message detail (raw, normalized, embed preview, errors)
-- [ ] Server-sent events feed
+- [x] Admin login and first-run setup flow with token entry
+- [x] Live log page with filters and message detail (raw, normalized, embed preview, errors)
+- [x] Server-sent events feed
 
 * Done when: you can set up from a fresh database in the browser and watch test messages arrive live.
 

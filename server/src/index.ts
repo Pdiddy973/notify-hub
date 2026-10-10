@@ -1,5 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadConfig, readVersion } from './config/index.js';
 import { openSqlite } from './db/index.js';
 import { connectDiscord } from './discord/index.js';
@@ -15,6 +16,7 @@ const hub = createHub({
   bodyLimitBytes: config.bodyLimitBytes,
   logger: { level: config.logLevel },
   connect: connectDiscord,
+  webRoot: fileURLToPath(new URL('../../web/dist', import.meta.url)),
 });
 
 await hub.app.listen({ host: '0.0.0.0', port: config.port });

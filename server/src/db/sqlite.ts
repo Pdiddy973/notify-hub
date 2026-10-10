@@ -1,5 +1,5 @@
 import BetterSqlite3 from 'better-sqlite3';
-import { asc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, lt, sql, type SQL } from 'drizzle-orm';
 import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { fileURLToPath } from 'node:url';
@@ -101,6 +101,19 @@ export function createSqliteDatabase({ orm }: SqliteHandle, secrets: SecretBox):
         .run();
     },
 
+    listSources() {
+      return orm
+        .select({
+          id: schema.sources.id,
+          name: schema.sources.name,
+          type: schema.sources.type,
+          enabled: schema.sources.enabled,
+        })
+        .from(schema.sources)
+        .orderBy(asc(schema.sources.name))
+        .all();
+    },
+
     listRoutes(sourceId) {
       return orm
         .select({
@@ -174,6 +187,44 @@ export function createSqliteDatabase({ orm }: SqliteHandle, secrets: SecretBox):
         .map((row) => row.id);
     },
 
+    listMessages({ source, status, severity, q, before, limit }) {
+      const { messages } = schema;
+      const conditions: SQL[] = [];
+      if (source) conditions.push(eq(messages.sourceId, source));
+      if (status) conditions.push(eq(messages.status, status));
+      if (severity) {
+        conditions.push(
+          sql`exists (select 1 from json_each(${messages.normalized}) where json_extract(value, '$.severity') = ${severity})`,
+        );
+      }
+      if (q) {
+        const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+        conditions.push(
+          sql`(${messages.rawPayload} like ${like} escape '\\' or ${messages.normalized} like ${like} escape '\\' or ${messages.error} like ${like} escape '\\')`,
+        );
+      }
+      if (before) conditions.push(lt(messages.id, before));
+      return orm
+        .select()
+        .from(messages)
+        .where(and(...conditions))
+        .orderBy(desc(messages.id))
+        .limit(limit)
+        .all()
+        .map(toMessage);
+    },
+
+    listDeliveriesFor(messageIds) {
+      if (messageIds.length === 0) return [];
+      return orm
+        .select()
+        .from(schema.deliveries)
+        .where(inArray(schema.deliveries.messageId, messageIds))
+        .orderBy(asc(schema.deliveries.id))
+        .all()
+        .map(toDelivery);
+    },
+
     insertDelivery(delivery) {
       return toDelivery(orm.insert(schema.deliveries).values(delivery).returning().get());
     },
@@ -242,6 +293,29 @@ export function createSqliteDatabase({ orm }: SqliteHandle, secrets: SecretBox):
         .orderBy(asc(schema.discarded.id))
         .all()
         .map((row): DiscardRow => compact({ ...row, reason: row.reason as DiscardReason }));
+    },
+
+    createSession(idHash, { createdAt, expiresAt, userAgent }) {
+      orm
+        .insert(schema.sessions)
+        .values({ idHash, createdAt, expiresAt, userAgent: userAgent ?? null })
+        .run();
+    },
+
+    getSession(idHash) {
+      return orm
+        .select({ createdAt: schema.sessions.createdAt, expiresAt: schema.sessions.expiresAt })
+        .from(schema.sessions)
+        .where(eq(schema.sessions.idHash, idHash))
+        .get();
+    },
+
+    deleteSession(idHash) {
+      orm.delete(schema.sessions).where(eq(schema.sessions.idHash, idHash)).run();
+    },
+
+    pruneSessions(now) {
+      return orm.delete(schema.sessions).where(lt(schema.sessions.expiresAt, now)).run().changes;
     },
   };
 }

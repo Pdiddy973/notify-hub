@@ -4,4 +4,4 @@ coverage/
 *.tsbuildinfo
 .env
 data/
-
+data-*/

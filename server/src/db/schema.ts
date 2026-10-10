@@ -157,3 +157,15 @@ export const discarded = sqliteTable(
     index('discarded_last_seen_idx').on(table.lastSeen),
   ],
 );
+
+export const sessions = sqliteTable(
+  'sessions',
+  {
+    // SHA-256 of the session id; the id itself is only in the browser cookie.
+    idHash: text('id_hash').primaryKey(),
+    createdAt: text('created_at').notNull(),
+    expiresAt: text('expires_at').notNull(),
+    userAgent: text('user_agent'),
+  },
+  (table) => [index('sessions_expires_idx').on(table.expiresAt)],
+);

@@ -9,6 +9,9 @@ const sendableTypes = new Set([ChannelType.GuildText, ChannelType.GuildAnnouncem
 export interface DiscordConnection {
   sender: DiscordSender;
   isReady(): boolean;
+  // The bot's user name and the guild name, once connected.
+  botUser(): string | undefined;
+  guildName(): string | undefined;
   // Saves the guild's text channels through the API and returns how many there are.
   syncChannels(): Promise<number>;
   destroy(): Promise<void>;
@@ -58,6 +61,8 @@ export function connectDiscord({ token, guildId, api, log }: ConnectOptions): Di
       },
     },
     isReady: () => client.isReady(),
+    botUser: () => client.user?.username,
+    guildName: () => client.guilds.cache.get(guildId)?.name,
     syncChannels,
     destroy: () => client.destroy(),
   };

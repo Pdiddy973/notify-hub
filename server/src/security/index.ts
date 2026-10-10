@@ -19,6 +19,21 @@ export function generateToken(): string {
   return randomBytes(32).toString('base64url');
 }
 
+// Crockford base32: no I, L, O, or U, so the code is easy to read from a log and type.
+const SETUP_CODE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+
+// A 60-bit one-time code for first-run setup, as XXXX-XXXX-XXXX.
+export function generateSetupCode(): string {
+  const chars = [...randomBytes(12)].map((byte) => SETUP_CODE_ALPHABET[byte % 32]).join('');
+  return chars.match(/.{4}/g)!.join('-');
+}
+
+// Compares setup codes without regard to case, spaces, or dashes, in constant time.
+export function setupCodesMatch(given: string, expected: string): boolean {
+  const clean = (code: string) => code.toUpperCase().replace(/[^0-9A-Z]/g, '');
+  return tokensMatch(clean(given), clean(expected));
+}
+
 // The first 4 characters and the length: all that is kept of a rejected token.
 export function tokenHint(token: string): string {
   return `${token.slice(0, 4)}...(${token.length})`;
@@ -53,19 +68,18 @@ export function createSecretBox(appSecret: string): SecretBox {
 
 export const REDACTED = '[redacted]';
 
-// Header and field names masked before storage, compared without case, dashes, or underscores.
-export const defaultRedactNames = [
+// A header or field is masked before storage when its name contains one of these words,
+// compared without case, dashes, underscores, or dots: refresh_token and x-api-key both match.
+export const defaultRedactTerms = [
   'authorization',
   'cookie',
-  'set-cookie',
-  'x-api-key',
-  'x-hub-token',
-  'apikey',
-  'api_key',
-  'token',
-  'access_token',
   'password',
+  'passwd',
   'secret',
+  'token',
+  'apikey',
+  'privatekey',
+  'credential',
 ];
 
 export interface Redactor {
@@ -74,10 +88,13 @@ export interface Redactor {
   body(raw: string, contentType: string): string;
 }
 
-export function createRedactor(names: string[] = defaultRedactNames): Redactor {
-  const normalize = (name: string) => name.toLowerCase().replace(/[-_]/g, '');
-  const secretNames = new Set(names.map(normalize));
-  const isSecret = (name: string) => secretNames.has(normalize(name));
+export function createRedactor(terms: string[] = defaultRedactTerms): Redactor {
+  const normalize = (name: string) => name.toLowerCase().replace(/[-_.]/g, '');
+  const secretTerms = terms.map(normalize);
+  const isSecret = (name: string) => {
+    const normalized = normalize(name);
+    return secretTerms.some((term) => normalized.includes(term));
+  };
 
   const redactValue = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(redactValue);

@@ -1,1 +1,50 @@
 @import 'tailwindcss';
+
+/* Dark by default, matching Discord. */
+@theme {
+  --color-page: #1e1f22;
+  --color-surface: #2b2d31;
+  --color-raised: #313338;
+  --color-line: #3f4147;
+  --color-ink: #dbdee1;
+  --color-muted: #949ba4;
+  --color-accent: #5865f2;
+  --color-accent-strong: #4752c4;
+  --color-ok: #23a55a;
+  --color-warn: #f0b232;
+  --color-bad: #f23f43;
+  --color-info: #3498db;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--color-page);
+  color: var(--color-ink);
+  font-family:
+    'gg sans',
+    'Noto Sans',
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    sans-serif;
+}
+
+/* New rows from the live stream fade from a highlight. */
+@keyframes arrive {
+  from {
+    background-color: rgb(88 101 242 / 0.25);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.row-new {
+  animation: arrive 3s ease-out;
+}
