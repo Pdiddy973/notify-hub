@@ -13,7 +13,7 @@ Self-hosted webhook router for Discord. Point all your services at one endpoint;
 3. Add a source, choose its adapter, and paste the generated URL into the service.
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/<you>/notify-hub/main/scripts/create-lxc.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Pdiddy973/notify-hub/main/scripts/create-lxc.sh)"
 ```
 
 ---
@@ -48,19 +48,19 @@ The hub runs natively in a small Debian LXC as a systemd service. One command on
 On the Proxmox host (creates the LXC and installs the hub):
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/<you>/notify-hub/main/scripts/create-lxc.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Pdiddy973/notify-hub/main/scripts/create-lxc.sh)"
 ```
 
 Override the defaults with variables (`CTID`, `HOSTNAME`, `STORAGE`, `BRIDGE`, `CORES`, `MEMORY`, `DISK`):
 
 ```bash
-CTID=120 STORAGE=local-lvm BRIDGE=vmbr0 bash -c "$(curl -fsSL https://raw.githubusercontent.com/<you>/notify-hub/main/scripts/create-lxc.sh)"
+CTID=120 STORAGE=local-lvm BRIDGE=vmbr0 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Pdiddy973/notify-hub/main/scripts/create-lxc.sh)"
 ```
 
 Inside an existing Debian or Ubuntu LXC, as root:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/<you>/notify-hub/main/scripts/install.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Pdiddy973/notify-hub/main/scripts/install.sh)"
 ```
 
 The same thing by hand (adjust the template name to what `pveam list local` shows):
@@ -70,7 +70,7 @@ pct create 120 local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst \
   --hostname notify-hub --cores 1 --memory 512 --swap 256 \
   --rootfs local-lvm:4 --net0 name=eth0,bridge=vmbr0,ip=dhcp \
   --unprivileged 1 --onboot 1 --start 1
-pct exec 120 -- bash -c "$(curl -fsSL https://raw.githubusercontent.com/<you>/notify-hub/main/scripts/install.sh)"
+pct exec 120 -- bash -c "$(curl -fsSL https://raw.githubusercontent.com/Pdiddy973/notify-hub/main/scripts/install.sh)"
 ```
 
 Private repository: create a fine-grained token limited to this repository with read-only Contents access, export it as `GITHUB_TOKEN`, and pass it in the curl header. The scripts use the same token to download the release.
@@ -78,7 +78,7 @@ Private repository: create a fine-grained token limited to this repository with 
 ```bash
 export GITHUB_TOKEN=<token>
 bash -c "$(curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github.raw+json" \
-  https://api.github.com/repos/<you>/notify-hub/contents/scripts/create-lxc.sh)"
+  https://api.github.com/repos/Pdiddy973/notify-hub/contents/scripts/create-lxc.sh)"
 ```
 
 Inside an existing LXC, use the same command with `install.sh` in place of `create-lxc.sh`.
