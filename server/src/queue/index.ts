@@ -1,6 +1,8 @@
 import type { Embed } from '@notify-hub/shared';
 import type { Database, Delivery } from '../db/index.js';
 
+export { createWorker, type Worker, type WorkerOptions } from './worker.js';
+
 export interface Queue {
   enqueue(messageId: number, channelId: string, embed: Embed): Delivery;
   // Takes the oldest queued delivery and marks it as sending.
@@ -9,10 +11,17 @@ export interface Queue {
   fail(deliveryId: number, error: string): void;
 }
 
-export function createQueue(db: Database): Queue {
+export interface QueueOptions {
+  // Called after each enqueue, so a waiting worker can start at once.
+  onEnqueue?: () => void;
+}
+
+export function createQueue(db: Database, { onEnqueue }: QueueOptions = {}): Queue {
   return {
     enqueue(messageId, channelId, embed) {
-      return db.insertDelivery({ messageId, channelId, embed, attempt: 0, status: 'queued' });
+      const delivery = db.insertDelivery({ messageId, channelId, embed, attempt: 0, status: 'queued' });
+      onEnqueue?.();
+      return delivery;
     },
 
     claim() {
@@ -27,14 +36,14 @@ export function createQueue(db: Database): Queue {
       db.updateDelivery(deliveryId, { status: 'sent', discordMessageId, sentAt: new Date().toISOString() });
       const delivery = db.getDelivery(deliveryId);
       if (delivery && db.listDeliveries(delivery.messageId).every((d) => d.status === 'sent')) {
-        db.setMessageStatus(delivery.messageId, 'delivered');
+        db.updateMessage(delivery.messageId, { status: 'delivered' });
       }
     },
 
     fail(deliveryId, error) {
       db.updateDelivery(deliveryId, { status: 'failed', error });
       const delivery = db.getDelivery(deliveryId);
-      if (delivery) db.setMessageStatus(delivery.messageId, 'failed');
+      if (delivery) db.updateMessage(delivery.messageId, { status: 'failed' });
     },
   };
 }

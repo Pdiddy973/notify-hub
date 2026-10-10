@@ -1,4 +1,5 @@
 import type { Embed } from '@notify-hub/shared';
+import type { Channel, Database } from '../db/index.js';
 import type { Queue } from '../queue/index.js';
 
 export interface DeliveryJob {
@@ -13,9 +14,15 @@ export interface BotApi {
   claimDelivery(): Promise<DeliveryJob | null>;
   completeDelivery(deliveryId: number, discordMessageId: string): Promise<void>;
   failDelivery(deliveryId: number, error: string): Promise<void>;
+  saveChannels(guildId: string, channels: Omit<Channel, 'guildId'>[]): Promise<void>;
 }
 
-export function createBotApi(queue: Queue): BotApi {
+export interface BotApiDeps {
+  db: Database;
+  queue: Queue;
+}
+
+export function createBotApi({ db, queue }: BotApiDeps): BotApi {
   return {
     async claimDelivery() {
       const delivery = queue.claim();
@@ -28,6 +35,9 @@ export function createBotApi(queue: Queue): BotApi {
     },
     async failDelivery(deliveryId, error) {
       queue.fail(deliveryId, error);
+    },
+    async saveChannels(guildId, channels) {
+      db.saveChannels(guildId, channels);
     },
   };
 }

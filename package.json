@@ -12,7 +12,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "tsx watch --conditions=development server/src/index.ts",
+    "dev": "tsx watch --conditions=development --env-file-if-exists=.env server/src/index.ts",
     "build": "tsc -b && npm run build -w @notify-hub/web",
     "start": "node server/dist/index.js",
     "typecheck": "tsc -b && tsc -p server/test && tsc -p web",
@@ -20,7 +20,8 @@
     "test": "vitest run",
     "dev:web": "npm run dev -w @notify-hub/web",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "seed": "tsx --conditions=development --env-file-if-exists=.env server/src/seed.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -31,3 +31,6 @@ export function createBot({ api, sender }: BotDeps): Bot {
     },
   };
 }
+
+export { connectDiscord, type ConnectOptions, type DiscordConnection } from './client.js';
+export { botTokenProblem } from './token.js';

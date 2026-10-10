@@ -1,70 +1,121 @@
-import { describe, expect, it, vi } from 'vitest';
-import { createRegistry, type Adapter } from '../src/adapters/index.js';
-import { createBotApi } from '../src/api/index.js';
-import { defaultConfig } from '../src/config/index.js';
-import { createPipeline } from '../src/core/index.js';
-import { createBot, type DiscordSender } from '../src/discord/index.js';
-import { createIngest } from '../src/ingest/index.js';
-import { createQueue } from '../src/queue/index.js';
-import { createMemoryDb } from './support/memory-db.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { severityColors } from '../src/core/index.js';
+import { createTestHub, postHook, SOURCE_ID, type TestHub } from './support/hub.js';
 
-const testAdapter: Adapter = {
-  id: 'test',
-  name: 'Test',
-  parse: 'json',
-  normalize: ({ body }) => {
-    const { event, title } = body as { event: string; title: string };
-    return [{ event, severity: 'success', title }];
-  },
-  samples: [{ name: 'download', body: { event: 'download', title: 'Episode downloaded' } }],
-};
+const download = { event: 'download', severity: 'success', title: 'Episode downloaded', body: 'Show S02E05' };
 
 describe('pipeline', () => {
+  let hub: TestHub;
+  afterEach(() => hub.close());
+
   it('carries a webhook from ingest through adapter, router, queue, and bot to the sender', async () => {
-    const db = createMemoryDb({
-      sources: [
-        { id: 'sonarr-main', name: 'Sonarr', type: 'test', token: 'source-token', enabled: true, config: {} },
-      ],
-      routes: [{ id: 1, sourceId: 'sonarr-main', priority: 1, channelId: 'channel-1', enabled: true }],
-    });
-    const queue = createQueue(db);
-    const pipeline = createPipeline({ db, adapters: createRegistry([testAdapter]), queue });
-    const ingest = createIngest({
-      config: defaultConfig,
-      db,
-      redact: (raw) => raw,
-      onStored: (id) => pipeline.process(id),
-    });
-    const send = vi.fn<DiscordSender['send']>().mockResolvedValue({ messageId: 'discord-1' });
-    const bot = createBot({ api: createBotApi(queue), sender: { send } });
+    hub = createTestHub();
+    const response = await postHook(hub, download);
+    expect(response.statusCode).toBe(202);
 
-    const body = JSON.stringify({ event: 'download', title: 'Episode downloaded' });
-    const result = ingest({
-      sourceId: 'sonarr-main',
-      pathToken: 'source-token',
-      headers: { 'content-type': 'application/json', 'content-length': String(body.length) },
-      method: 'POST',
-      clientAddress: '192.168.1.20',
-      contentType: 'application/json',
-      readBody: () => body,
+    await vi.waitFor(() => expect(hub.send).toHaveBeenCalledOnce());
+    const [channelId, embed] = hub.send.mock.calls[0]!;
+    expect(channelId).toBe('channel-1');
+    expect(embed).toMatchObject({
+      author: { name: 'Sonarr' },
+      title: 'Episode downloaded',
+      description: 'Show S02E05',
+      color: severityColors.success,
+      footer: { text: 'download' },
     });
-    if (result.status !== 202) throw new Error(`Expected 202, got ${result.status}`);
 
-    expect(await bot.deliverNext()).toBe(true);
-    expect(send).toHaveBeenCalledOnce();
-    expect(send).toHaveBeenCalledWith(
-      'channel-1',
-      expect.objectContaining({
-        author: { name: 'sonarr-main' },
-        title: 'Episode downloaded',
-        color: 0x2ecc71,
-        footer: { text: 'download' },
-      }),
-    );
-    expect(db.getMessage(result.messageId)?.status).toBe('delivered');
-    expect(db.listDeliveries(result.messageId)).toMatchObject([
-      { status: 'sent', attempt: 1, discordMessageId: 'discord-1' },
+    await vi.waitFor(() => expect(hub.db.getMessage(1)?.status).toBe('delivered'));
+    const message = hub.db.getMessage(1)!;
+    expect(message.normalized).toEqual([{ ...download, source: SOURCE_ID, timestamp: message.receivedAt }]);
+    expect(embed.timestamp).toBe(message.receivedAt);
+    expect(hub.db.listDeliveries(1)).toMatchObject([
+      { status: 'sent', attempt: 1, discordMessageId: 'discord-1', channelId: 'channel-1' },
     ]);
-    expect(await bot.deliverNext()).toBe(false);
+  });
+
+  it('delivers in the order received', async () => {
+    hub = createTestHub();
+    for (const title of ['one', 'two', 'three']) await postHook(hub, { ...download, title });
+    await vi.waitFor(() => expect(hub.send).toHaveBeenCalledTimes(3));
+    expect(hub.send.mock.calls.map(([, embed]) => embed.title)).toEqual(['one', 'two', 'three']);
+  });
+
+  it('sends a fallback error embed and keeps the raw payload when the adapter fails', async () => {
+    hub = createTestHub();
+    await postHook(hub, '{"title": broken');
+
+    await vi.waitFor(() => expect(hub.send).toHaveBeenCalledOnce());
+    expect(hub.send.mock.calls[0]![1]).toMatchObject({
+      title: 'Could not read a message from Sonarr',
+      color: severityColors.error,
+      footer: { text: 'adapter-error' },
+    });
+    const message = hub.db.getMessage(1)!;
+    expect(message.rawPayload).toBe('{"title": broken');
+    expect(message.error).toMatch(/JSON/);
+  });
+
+  it('treats output that does not match the standard message as an adapter error', async () => {
+    hub = createTestHub();
+    await postHook(hub, { title: 'No event or severity' });
+    await vi.waitFor(() => expect(hub.send).toHaveBeenCalledOnce());
+    expect(hub.db.getMessage(1)?.error).toMatch(/Adapter output is invalid/);
+  });
+
+  it('marks a message unrouted when no route matches', async () => {
+    hub = createTestHub();
+    hub.db.replaceRoutes(SOURCE_ID, []);
+    await postHook(hub, download);
+    await vi.waitFor(() => expect(hub.db.getMessage(1)?.status).toBe('unrouted'));
+    expect(hub.send).not.toHaveBeenCalled();
+  });
+
+  it('keeps messages queued while the bot is offline and sends them when it connects', async () => {
+    hub = createTestHub({ ready: false });
+    await postHook(hub, download);
+    await vi.waitFor(() => expect(hub.db.getMessage(1)?.status).toBe('queued'));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(hub.send).not.toHaveBeenCalled();
+
+    hub.setReady(true);
+    await vi.waitFor(() => expect(hub.db.getMessage(1)?.status).toBe('delivered'));
+  });
+
+  it('loses nothing across a restart: stored messages are processed and interrupted sends retried', async () => {
+    hub = createTestHub({ ready: false });
+    await postHook(hub, { ...download, title: 'interrupted' });
+    await vi.waitFor(() => expect(hub.db.getMessage(1)?.status).toBe('queued'));
+    hub.db.updateDelivery(1, { status: 'sending' });
+    hub.db.insertMessage({
+      sourceId: SOURCE_ID,
+      receivedAt: new Date().toISOString(),
+      headers: {},
+      rawPayload: JSON.stringify({ ...download, title: 'unprocessed' }),
+      rawContentType: 'application/json',
+      status: 'received',
+    });
+
+    hub.setReady(true);
+    await hub.restart();
+
+    await vi.waitFor(() => expect(hub.send).toHaveBeenCalledTimes(2));
+    expect(hub.send.mock.calls.map(([, embed]) => embed.title)).toEqual(['interrupted', 'unprocessed']);
+    await vi.waitFor(() => expect(hub.db.getMessage(2)?.status).toBe('delivered'));
+    expect(hub.db.getMessage(1)?.status).toBe('delivered');
+  });
+
+  it('records a failed send on the delivery and the message', async () => {
+    hub = createTestHub();
+    hub.send.mockRejectedValueOnce(new Error('Missing Permissions'));
+    await postHook(hub, download);
+    await vi.waitFor(() => expect(hub.db.getMessage(1)?.status).toBe('failed'));
+    expect(hub.db.listDeliveries(1)).toMatchObject([{ status: 'failed', error: 'Missing Permissions' }]);
+  });
+
+  it('does not connect to Discord until a bot token and guild are saved', async () => {
+    hub = createTestHub({ configured: false });
+    await postHook(hub, download);
+    await vi.waitFor(() => expect(hub.db.getMessage(1)?.status).toBe('queued'));
+    expect(hub.connect).not.toHaveBeenCalled();
   });
 });

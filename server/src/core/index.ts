@@ -1,15 +1,11 @@
-import type { Embed, Severity, StandardMessage } from '@notify-hub/shared';
+import { adapterMessageSchema, type StandardMessage } from '@notify-hub/shared';
+import { z } from 'zod';
 import { parseBody, type AdapterRegistry } from '../adapters/index.js';
-import type { Database, Route } from '../db/index.js';
+import type { Database, Route, Source, StoredMessage } from '../db/index.js';
 import type { Queue } from '../queue/index.js';
+import { renderEmbed } from './render.js';
 
-const severityColors: Record<Severity, number> = {
-  info: 0x3498db,
-  success: 0x2ecc71,
-  warning: 0xf1c40f,
-  error: 0xe74c3c,
-  debug: 0x95a5a6,
-};
+export { embedLimits, embedLength, renderEmbed, severityColors, truncate } from './render.js';
 
 // Returns the channel of the first enabled route by priority, or null when unrouted.
 // Match conditions are not evaluated yet.
@@ -18,17 +14,20 @@ export function route(_message: StandardMessage, routes: Route[]): string | null
   return match?.channelId ?? null;
 }
 
-export function renderEmbed(message: StandardMessage): Embed {
+function describeError(error: unknown): string {
+  if (error instanceof z.ZodError) return `Adapter output is invalid:\n${z.prettifyError(error)}`;
+  return error instanceof Error ? error.message : String(error);
+}
+
+// Plain error message sent in place of the adapter's output when it fails.
+function fallbackMessage(source: Source, stored: StoredMessage, error: string): StandardMessage {
   return {
-    author: { name: message.source },
-    title: message.title,
-    description: message.body,
-    url: message.url,
-    color: severityColors[message.severity],
-    fields: message.fields,
-    image: message.imageUrl ? { url: message.imageUrl } : undefined,
-    footer: { text: message.event },
-    timestamp: message.timestamp,
+    source: source.id,
+    event: 'adapter-error',
+    severity: 'error',
+    title: `Could not read a message from ${source.name}`,
+    body: `${error}\n\nThe raw payload is kept in the hub log as message #${stored.id}.`,
+    timestamp: stored.receivedAt,
   };
 }
 
@@ -49,32 +48,42 @@ export function createPipeline({ db, adapters, queue }: PipelineDeps): Pipeline 
       const stored = db.getMessage(messageId);
       if (!stored) return;
       const source = db.getSource(stored.sourceId);
-      const adapter = source ? adapters.get(source.type) : undefined;
-      if (!source || !adapter) {
-        db.setMessageStatus(messageId, 'failed');
+      if (!source) {
+        db.updateMessage(messageId, { status: 'failed', error: `Source ${stored.sourceId} not found` });
         return;
       }
 
-      const body = parseBody(stored.rawPayload, adapter.parse);
-      const messages: StandardMessage[] = adapter
-        .normalize({ body, headers: stored.headers, config: source.config })
-        .map((message) => ({ ...message, source: source.id, timestamp: stored.receivedAt }));
+      let messages: StandardMessage[];
+      try {
+        const adapter = adapters.get(source.type);
+        if (!adapter) throw new Error(`No adapter named ${source.type}`);
+        const body = parseBody(stored.rawPayload, adapter.parse);
+        messages = adapter
+          .normalize({ body, headers: stored.headers, config: source.config })
+          .map((output) => adapterMessageSchema.parse(output))
+          .map((output) => ({ ...output, source: source.id, timestamp: stored.receivedAt }));
+      } catch (error) {
+        const text = describeError(error);
+        db.updateMessage(messageId, { error: text });
+        messages = [fallbackMessage(source, stored, text)];
+      }
+
       if (messages.length === 0) {
-        db.setMessageStatus(messageId, 'dropped');
+        db.updateMessage(messageId, { status: 'dropped', normalized: [] });
         return;
       }
-      db.setMessageStatus(messageId, 'normalized');
+      db.updateMessage(messageId, { status: 'normalized', normalized: messages });
 
       const routes = db.listRoutes(source.id);
       let queued = 0;
       for (const message of messages) {
         const channelId = route(message, routes);
         if (channelId) {
-          queue.enqueue(messageId, channelId, renderEmbed(message));
+          queue.enqueue(messageId, channelId, renderEmbed(message, { sourceName: source.name }));
           queued++;
         }
       }
-      db.setMessageStatus(messageId, queued > 0 ? 'queued' : 'unrouted');
+      db.updateMessage(messageId, { status: queued > 0 ? 'queued' : 'unrouted' });
     },
   };
 }

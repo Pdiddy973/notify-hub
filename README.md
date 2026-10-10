@@ -709,10 +709,11 @@ notify-hub/
   .github/workflows/ ci.yml, release.yml
   package.json
   server/
+    migrations/      numbered SQL migrations, run on start
     src/
       index.ts
       config/
-      db/            schema, migrations, queries
+      db/            schema and queries
       ingest/        routes for /hook, body parsing, auth
       adapters/      built-in adapter files, same format as yours
       core/          standard message types, renderer, router
@@ -736,13 +737,20 @@ notify-hub/
 <details>
 <summary>Run and test</summary>
 
+Copy `.env.example` to `.env` and set `APP_SECRET` (the file shows a command that generates one). The local database goes in `./data`.
+
 ```bash
 npm install
-npm run dev        # server on http://localhost:8080, restarts on changes
+npm run seed       # temporary: saves the bot token, server, one source, and one route
+npm run dev        # hub on http://localhost:8080, restarts on changes
+npm run dev:web    # web UI on http://localhost:5173
 npm test
 npm run lint
+npm run format     # Prettier
 npm run build      # compiles to dist/; npm start runs the build
 ```
+
+Database changes: edit `server/src/db/schema.ts`, then run `npm run db:generate -w @notify-hub/server` to write the next numbered migration into `server/migrations/`. Migrations run when the hub starts.
 
 TypeScript strict mode on Node 22 LTS; Fastify, discord.js v14, SQLite through better-sqlite3 and Drizzle, React with Vite and Tailwind, Zod, pino, and Vitest.
 

@@ -1,15 +1,31 @@
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { loadConfig, readVersion } from './config/index.js';
-import { buildServer } from './server.js';
+import { openSqlite } from './db/index.js';
+import { connectDiscord } from './discord/index.js';
+import { createHub } from './hub.js';
 
 const config = loadConfig();
-const app = buildServer({ logger: { level: config.logLevel } });
+mkdirSync(config.dataDir, { recursive: true });
+const sqlite = openSqlite(join(config.dataDir, 'hub.db'));
 
-await app.listen({ host: '0.0.0.0', port: config.port });
-app.log.info({ version: readVersion() }, 'Notify Hub started');
+const hub = createHub({
+  sqlite,
+  appSecret: config.appSecret,
+  bodyLimitBytes: config.bodyLimitBytes,
+  logger: { level: config.logLevel },
+  connect: connectDiscord,
+});
+
+await hub.app.listen({ host: '0.0.0.0', port: config.port });
+hub.app.log.info({ version: readVersion(), dataDir: config.dataDir }, 'Notify Hub started');
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {
-    app.log.info({ signal }, 'Shutting down');
-    void app.close().then(() => process.exit(0));
+    hub.app.log.info({ signal }, 'Shutting down');
+    void hub.close().then(() => {
+      sqlite.sqlite.close();
+      process.exit(0);
+    });
   });
 }

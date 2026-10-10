@@ -1,0 +1,12 @@
+{
+  "event": "download",
+  "severity": "success",
+  "title": "Episode downloaded",
+  "body": "Show Name S02E05 - Episode Title",
+  "fields": [
+    { "name": "Quality", "value": "WEBDL-1080p", "inline": true },
+    { "name": "Indexer", "value": "NZBgeek", "inline": true }
+  ],
+  "url": "https://sonarr.local/series/show-name",
+  "imageUrl": "https://images.local/poster.jpg"
+}

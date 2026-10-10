@@ -26,6 +26,10 @@ export const standardMessageSchema = z.object({
 });
 export type StandardMessage = z.infer<typeof standardMessageSchema>;
 
+// What an adapter returns; the pipeline adds the source and the received time.
+export const adapterMessageSchema = standardMessageSchema.omit({ source: true, timestamp: true });
+export type AdapterMessage = z.infer<typeof adapterMessageSchema>;
+
 // The Discord embed the renderer builds from a standard message.
 export const embedSchema = z.object({
   author: z.object({ name: z.string() }).optional(),

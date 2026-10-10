@@ -719,11 +719,11 @@ git push origin v0.1.0
 
 **Phase 1: Core pipeline**
 
-- [ ] SQLite schema and migrations for all tables in section 5
-- [ ] Ingest endpoint with token check, discarded log for wrong tokens, raw storage, and 202 response
-- [ ] Standard message type, embed renderer, and truncation rules
-- [ ] Discord bot login, channel sync, and a sender with a basic queue worker
-- [ ] Temporary seed script for one source and one route
+- [x] SQLite schema and migrations for all tables in section 5
+- [x] Ingest endpoint with token check, discarded log for wrong tokens, raw storage, and 202 response
+- [x] Standard message type, embed renderer, and truncation rules
+- [x] Discord bot login, channel sync, and a sender with a basic queue worker
+- [x] Temporary seed script for one source and one route
 
 * Done when: a `curl` POST to the hook shows up as a styled embed in the chosen channel and appears in the database.
 

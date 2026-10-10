@@ -1,4 +1,4 @@
-import type { Embed } from '@notify-hub/shared';
+import type { Embed, StandardMessage } from '@notify-hub/shared';
 
 export type MessageStatus =
   'received' | 'normalized' | 'queued' | 'delivered' | 'failed' | 'unrouted' | 'dropped';
@@ -27,6 +27,13 @@ export interface Route {
   enabled: boolean;
 }
 
+export interface Channel {
+  id: string;
+  guildId: string;
+  name: string;
+  type: string;
+}
+
 export interface StoredMessage {
   id: number;
   sourceId: string;
@@ -35,6 +42,8 @@ export interface StoredMessage {
   rawPayload: string;
   rawContentType: string;
   status: MessageStatus;
+  normalized?: StandardMessage[];
+  error?: string;
 }
 
 export interface Delivery {
@@ -60,17 +69,55 @@ export interface DiscardEntry {
   tokenHint?: string;
 }
 
+export interface DiscardRow extends DiscardEntry {
+  id: number;
+  firstSeen: string;
+  lastSeen: string;
+  repeatCount: number;
+}
+
+export const settingKeys = {
+  // Encrypted.
+  discordToken: 'discord.token',
+  discordGuildId: 'discord.guildId',
+} as const;
+
+export type MessageChanges = Partial<Pick<StoredMessage, 'status' | 'normalized' | 'error'>>;
+
 // Storage used by the backend modules; the bot never receives it.
 export interface Database {
+  // Writes and reads a row; false when the database is unusable.
+  ping(): boolean;
+
+  getSetting(key: string): string | undefined;
+  setSetting(key: string, value: string, options?: { encrypted?: boolean }): void;
+
   getSource(id: string): Source | undefined;
+  saveSource(source: Source): void;
+
   listRoutes(sourceId: string): Route[];
+  replaceRoutes(sourceId: string, routes: Omit<Route, 'id' | 'sourceId'>[]): void;
+
+  listChannels(): Channel[];
+  // Replaces the stored channels of one guild.
+  saveChannels(guildId: string, channels: Omit<Channel, 'guildId'>[]): void;
+
   insertMessage(message: Omit<StoredMessage, 'id'>): StoredMessage;
   getMessage(id: number): StoredMessage | undefined;
-  setMessageStatus(id: number, status: MessageStatus): void;
+  updateMessage(id: number, changes: MessageChanges): void;
+  // Ids in the order received.
+  listMessageIds(status: MessageStatus): number[];
+
   insertDelivery(delivery: Omit<Delivery, 'id'>): Delivery;
   getDelivery(id: number): Delivery | undefined;
   listDeliveries(messageId: number): Delivery[];
   oldestQueuedDelivery(): Delivery | undefined;
   updateDelivery(id: number, changes: Partial<Omit<Delivery, 'id'>>): void;
+  // Returns deliveries left in sending by a stopped process to the queue.
+  requeueInterrupted(): number;
+
   recordDiscard(entry: DiscardEntry): void;
+  listDiscarded(): DiscardRow[];
 }
+
+export { createSqliteDatabase, openSqlite, type SqliteHandle } from './sqlite.js';

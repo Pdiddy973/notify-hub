@@ -1,7 +1,7 @@
-import type { StandardMessage } from '@notify-hub/shared';
+import type { AdapterMessage } from '@notify-hub/shared';
+import { standardAdapter } from './standard.js';
 
-// What normalize returns; the pipeline adds the source id and received time.
-export type AdapterMessage = Omit<StandardMessage, 'source' | 'timestamp'>;
+export type { AdapterMessage };
 
 export interface AdapterInput {
   body: unknown;
@@ -28,14 +28,16 @@ export function createRegistry(adapters: Adapter[]): AdapterRegistry {
   return { get: (id) => byId.get(id) };
 }
 
+export const builtInAdapters: Adapter[] = [standardAdapter];
+
 // Turns a stored raw payload into the body an adapter receives.
 export function parseBody(raw: string, format: Adapter['parse']): unknown {
   switch (format) {
     case 'json':
       return JSON.parse(raw) as unknown;
+    case 'form':
+      return Object.fromEntries(new URLSearchParams(raw));
     case 'text':
       return raw;
-    case 'form':
-      throw new Error('Form bodies are not supported yet');
   }
 }
