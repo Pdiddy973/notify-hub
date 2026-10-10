@@ -8,6 +8,7 @@ export default defineConfig(
   js.configs.recommended,
   tseslint.configs.recommended,
   { languageOptions: { globals: globals.node } },
+  { files: ['web/src/**/*.{ts,tsx}'], languageOptions: { globals: globals.browser } },
   {
     // The bot reaches the backend only through the api module.
     files: ['server/src/discord/**/*.ts'],

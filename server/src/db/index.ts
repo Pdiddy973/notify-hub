@@ -1,13 +1,7 @@
 import type { Embed } from '@notify-hub/shared';
 
 export type MessageStatus =
-  | 'received'
-  | 'normalized'
-  | 'queued'
-  | 'delivered'
-  | 'failed'
-  | 'unrouted'
-  | 'dropped';
+  'received' | 'normalized' | 'queued' | 'delivered' | 'failed' | 'unrouted' | 'dropped';
 
 export type DeliveryStatus = 'queued' | 'sending' | 'sent' | 'failed';
 

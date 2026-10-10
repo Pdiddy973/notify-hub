@@ -1,11 +1,4 @@
-import type {
-  Database,
-  Delivery,
-  DiscardEntry,
-  Route,
-  Source,
-  StoredMessage,
-} from '../../src/db/index.js';
+import type { Database, Delivery, DiscardEntry, Route, Source, StoredMessage } from '../../src/db/index.js';
 
 export interface MemorySeed {
   sources?: Source[];

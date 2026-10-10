@@ -5,7 +5,18 @@
   "type": "module",
   "dependencies": {
     "@notify-hub/shared": "0.0.0",
+    "better-sqlite3": "^13.0.3",
+    "discord.js": "^14.27.0",
+    "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.5",
+    "pino": "^10.4.0",
     "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "drizzle-kit": "^0.31.11"
+  },
+  "scripts": {
+    "db:generate": "drizzle-kit generate"
   }
 }

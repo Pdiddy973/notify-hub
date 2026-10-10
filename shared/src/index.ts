@@ -1,35 +1,41 @@
-export type Severity = 'info' | 'success' | 'warning' | 'error' | 'debug';
+import { z } from 'zod';
 
-export interface MessageField {
-  name: string;
-  value: string;
-  inline?: boolean;
-}
+export const severitySchema = z.enum(['info', 'success', 'warning', 'error', 'debug']);
+export type Severity = z.infer<typeof severitySchema>;
+
+export const messageFieldSchema = z.object({
+  name: z.string(),
+  value: z.string(),
+  inline: z.boolean().optional(),
+});
+export type MessageField = z.infer<typeof messageFieldSchema>;
 
 // The one shape every adapter produces (PLAN.md section 6).
-export interface StandardMessage {
-  source: string;
-  event: string;
-  severity: Severity;
-  title: string;
-  body?: string;
-  fields?: MessageField[];
-  url?: string;
-  imageUrl?: string;
-  timestamp: string;
+export const standardMessageSchema = z.object({
+  source: z.string(),
+  event: z.string(),
+  severity: severitySchema,
+  title: z.string(),
+  body: z.string().optional(),
+  fields: z.array(messageFieldSchema).optional(),
+  url: z.string().optional(),
+  imageUrl: z.string().optional(),
+  timestamp: z.string(),
   // Identifies what the message is about, for state tracking.
-  key?: string;
-}
+  key: z.string().optional(),
+});
+export type StandardMessage = z.infer<typeof standardMessageSchema>;
 
 // The Discord embed the renderer builds from a standard message.
-export interface Embed {
-  author?: { name: string };
-  title?: string;
-  description?: string;
-  url?: string;
-  color?: number;
-  fields?: MessageField[];
-  image?: { url: string };
-  footer?: { text: string };
-  timestamp?: string;
-}
+export const embedSchema = z.object({
+  author: z.object({ name: z.string() }).optional(),
+  title: z.string().optional(),
+  description: z.string().optional(),
+  url: z.string().optional(),
+  color: z.number().int().optional(),
+  fields: z.array(messageFieldSchema).optional(),
+  image: z.object({ url: z.string() }).optional(),
+  footer: z.object({ text: z.string() }).optional(),
+  timestamp: z.string().optional(),
+});
+export type Embed = z.infer<typeof embedSchema>;

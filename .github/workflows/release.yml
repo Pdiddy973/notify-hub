@@ -46,6 +46,7 @@ jobs:
           done
           cp -r shared/dist "$stage/shared/"
           cp -r server/dist "$stage/server/"
+          cp -r web/dist "$stage/web/"
           cp -r scripts "$stage/"
           chmod +x "$stage"/scripts/*.sh
           (cd "$stage" && npm ci --omit=dev)

@@ -14,14 +14,12 @@ describe('loadConfig', () => {
     });
   });
 
-  it.each([
-    { PORT: 'abc' },
-    { PORT: '0' },
-    { UI_PORT: '70000' },
-    { LOG_LEVEL: 'loud' },
-  ])('rejects %o', (env) => {
-    expect(() => loadConfig(env)).toThrow(/Invalid environment/);
-  });
+  it.each([{ PORT: 'abc' }, { PORT: '0' }, { UI_PORT: '70000' }, { LOG_LEVEL: 'loud' }])(
+    'rejects %o',
+    (env) => {
+      expect(() => loadConfig(env)).toThrow(/Invalid environment/);
+    },
+  );
 });
 
 describe('readVersion', () => {

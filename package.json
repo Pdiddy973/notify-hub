@@ -13,20 +13,28 @@
   },
   "scripts": {
     "dev": "tsx watch --conditions=development server/src/index.ts",
-    "build": "tsc -b",
+    "build": "tsc -b && npm run build -w @notify-hub/web",
     "start": "node server/dist/index.js",
-    "typecheck": "tsc -b && tsc -p server/test",
+    "typecheck": "tsc -b && tsc -p server/test && tsc -p web",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "dev:web": "npm run dev -w @notify-hub/web",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.20.5",
     "eslint": "^10.12.0",
     "globals": "^17.13.0",
+    "prettier": "^3.9.9",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.71.1",
     "vitest": "^5.0.3"
+  },
+  "allowScripts": {
+    "esbuild": false,
+    "better-sqlite3": false
   }
 }
