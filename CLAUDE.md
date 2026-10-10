@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Read PLAN.md before starting any task.
+Read PLAN.md before starting any task, and read the newest file in `what-was-done/` to see where the last session left off.
 
 ## Project
 
@@ -23,6 +23,7 @@ TypeScript on Node 22 LTS: Fastify, discord.js v14, SQLite via better-sqlite3, D
 
 ```text
 docs/                screenshots only
+what-was-done/       work log, one file per day (YYYY-MM-DD.md)
 scripts/             create-lxc.sh, install.sh, setup-tunnel.sh, launcher.sh, notify-check.sh
 adapters/            _template.js, copied to the data folder on first run
 .github/workflows/   ci.yml, release.yml
@@ -48,4 +49,5 @@ shared/              Zod schemas and types used by both
 - Database changes only through numbered migrations.
 - Small commits per task, one phase per branch.
 - Full-page UI layouts use the entire viewport width with a modest buffer around the content.
-- The README is the single documentation file: each topic has a short overview and collapsed sections for the details.
+- The README is the single documentation file: each topic has a short overview and collapsed sections for the details. The work log in `what-was-done/` is the one exception.
+- When a piece of work is done, write `what-was-done/YYYY-MM-DD.md` for that day, or add to it if it already exists: what was done, problems solved, decisions made, what is still open, and the commits.
