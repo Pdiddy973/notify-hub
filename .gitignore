@@ -1,7 +1,42 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
 coverage/
 *.tsbuildinfo
+.vite/
+.eslintcache
+
+# Release artifacts built locally
+notify-hub-*.tar.gz
+notify-hub-*.tar.gz.sha256
+
+# Secrets and local config
 .env
+.env.*
+!.env.example
+
+# Local data and databases
 data/
 data-*/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Claude Code local settings
+.claude/settings.local.json

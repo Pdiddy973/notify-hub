@@ -794,4 +794,4 @@ Planned features, each with a scope and a done-when condition, are listed in [TO
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
