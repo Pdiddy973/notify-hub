@@ -73,7 +73,17 @@ pct create 120 local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst \
 pct exec 120 -- bash -c "$(curl -fsSL https://raw.githubusercontent.com/<you>/notify-hub/main/scripts/install.sh)"
 ```
 
-Private repository: set `GITHUB_TOKEN` (a read-only fine-grained token with Contents access) in front of the command and pass it in the curl header.
+Private repository: create a fine-grained token limited to this repository with read-only Contents access, export it as `GITHUB_TOKEN`, and pass it in the curl header. The scripts use the same token to download the release.
+
+```bash
+export GITHUB_TOKEN=<token>
+bash -c "$(curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github.raw+json" \
+  https://api.github.com/repos/<you>/notify-hub/contents/scripts/create-lxc.sh)"
+```
+
+Inside an existing LXC, use the same command with `install.sh` in place of `create-lxc.sh`.
+
+Both scripts also accept `VERSION` (a release tag such as `v0.1.0`; the latest release by default) and `REPO` (`owner/name`).
 
 </details>
 
@@ -728,8 +738,10 @@ notify-hub/
 
 ```bash
 npm install
-npm run dev
+npm run dev        # server on http://localhost:8080, restarts on changes
 npm test
+npm run lint
+npm run build      # compiles to dist/; npm start runs the build
 ```
 
 TypeScript strict mode on Node 22 LTS; Fastify, discord.js v14, SQLite through better-sqlite3 and Drizzle, React with Vite and Tailwind, Zod, pino, and Vitest.
@@ -751,7 +763,14 @@ TypeScript strict mode on Node 22 LTS; Fastify, discord.js v14, SQLite through b
 <details>
 <summary>Releases</summary>
 
-Push a version tag (see Updates). The release workflow builds the tarball, builds the checksum, and attaches both to a GitHub release. `ci.yml` runs lint and tests on every push.
+Push a version tag such as `v0.1.0` (a tag with a suffix, such as `v0.2.0-beta.1`, becomes a pre-release). The release workflow runs lint and tests, sets the package version from the tag, builds, installs production dependencies, and attaches `notify-hub-<tag>.tar.gz` and its `.sha256` checksum to a GitHub release. `ci.yml` runs lint, type checks, tests, and shellcheck on every push.
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow needs Read and write workflow permissions (repository Settings, Actions, General).
 
 </details>
 
