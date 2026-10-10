@@ -4,5 +4,4 @@ coverage/
 *.tsbuildinfo
 .env
 data/
-CLAUDE.md
-PLAN.md
+
