@@ -41,6 +41,13 @@ export function registerIngestRoutes(
 
     // Runs before the body is read, so a rejected request never reaches storage.
     scope.addHook('onRequest', async (request, reply) => {
+      const blockedMs = ingest.blockedFor(request.ip);
+      if (blockedMs > 0) {
+        return reply
+          .code(429)
+          .header('retry-after', String(Math.ceil(blockedMs / 1000)))
+          .send({ error: 'Too Many Requests' });
+      }
       const params = request.params as { sourceId: string; token?: string };
       const source = ingest.authorize({
         sourceId: params.sourceId,

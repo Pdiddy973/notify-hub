@@ -1,7 +1,7 @@
 import { ChannelType, Client, Events, GatewayIntentBits } from 'discord.js';
 import type { FastifyBaseLogger } from 'fastify';
 import type { BotApi } from '../api/index.js';
-import type { DiscordSender } from './index.js';
+import { allowedMentionsFor, type DiscordSender } from './index.js';
 
 // Channel types the bot can post embeds to.
 const sendableTypes = new Set([ChannelType.GuildText, ChannelType.GuildAnnouncement]);
@@ -53,10 +53,14 @@ export function connectDiscord({ token, guildId, api, log }: ConnectOptions): Di
 
   return {
     sender: {
-      async send(channelId, embed) {
+      async send(channelId, embed, content) {
         const channel = await client.channels.fetch(channelId);
         if (!channel?.isSendable()) throw new Error(`Channel ${channelId} cannot receive messages`);
-        const message = await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+        const message = await channel.send({
+          ...(content ? { content } : {}),
+          embeds: [embed],
+          allowedMentions: allowedMentionsFor(content),
+        });
         return { messageId: message.id };
       },
     },

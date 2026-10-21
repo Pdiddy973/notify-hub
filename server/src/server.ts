@@ -9,7 +9,8 @@ export interface ServerOptions {
   // False makes /health answer 503 not ok.
   isHealthy?: () => boolean;
   ingest?: Ingest;
-  bodyLimitBytes?: number;
+  // Largest webhook body; the admin API has its own fixed limit.
+  ingestBodyLimitBytes?: number;
   // Folder with the built web UI; not served when missing.
   webRoot?: string;
 }
@@ -29,6 +30,9 @@ const securityHeaders = {
     "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
 };
 
+// Largest admin API request body.
+const ADMIN_BODY_LIMIT = 1024 * 1024;
+
 // Paths that never fall back to the web UI.
 const NON_UI_PATH = /^\/(api|hook|health)(\/|\?|$)/;
 
@@ -37,7 +41,7 @@ export function buildServer({
   logger = false,
   isHealthy = () => true,
   ingest,
-  bodyLimitBytes = 1024 * 1024,
+  ingestBodyLimitBytes = 1024 * 1024,
   webRoot,
 }: ServerOptions = {}): FastifyInstance {
   const app = Fastify({
@@ -54,7 +58,7 @@ export function buildServer({
             },
           }
         : logger,
-    bodyLimit: bodyLimitBytes,
+    bodyLimit: ADMIN_BODY_LIMIT,
     // Live log streams stay open; closing the server ends them.
     forceCloseConnections: true,
   });
@@ -103,7 +107,7 @@ export function buildServer({
       isHealthy() ? { status: 'ok' as const } : reply.code(503).send({ status: 'not ok' as const }),
   );
 
-  if (ingest) registerIngestRoutes(app, ingest, { bodyLimit: bodyLimitBytes });
+  if (ingest) registerIngestRoutes(app, ingest, { bodyLimit: ingestBodyLimitBytes });
 
   return app;
 }

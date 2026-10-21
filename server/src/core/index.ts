@@ -1,18 +1,22 @@
-import { adapterMessageSchema, type StandardMessage } from '@notify-hub/shared';
+import { adapterMessageSchema, type MessageStatus, type StandardMessage } from '@notify-hub/shared';
 import { z } from 'zod';
 import { parseBody, type AdapterRegistry } from '../adapters/index.js';
-import type { Database, Route, Source, StoredMessage } from '../db/index.js';
+import type { Database, Source, StoredMessage } from '../db/index.js';
 import type { Queue } from '../queue/index.js';
 import { renderEmbed } from './render.js';
+import { createMuteCheck, route } from './router.js';
+import type { SettingsStore } from './settings.js';
 
 export { embedLimits, embedLength, renderEmbed, severityColors, truncate } from './render.js';
-
-// Returns the channel of the first enabled route by priority, or null when unrouted.
-// Match conditions are not evaluated yet.
-export function route(_message: StandardMessage, routes: Route[]): string | null {
-  const match = routes.filter((r) => r.enabled).sort((a, b) => a.priority - b.priority)[0];
-  return match?.channelId ?? null;
-}
+export {
+  conditionsMismatch,
+  createMuteCheck,
+  noMutes,
+  route,
+  type MuteCheck,
+  type RoutableMessage,
+} from './router.js';
+export { createSettingsStore, type SettingsStore } from './settings.js';
 
 function describeError(error: unknown): string {
   if (error instanceof z.ZodError) return `Adapter output is invalid:\n${z.prettifyError(error)}`;
@@ -34,15 +38,19 @@ function fallbackMessage(source: Source, stored: StoredMessage, error: string): 
 export interface Pipeline {
   // Normalizes a stored message, routes it, and queues one delivery per routed result.
   process(messageId: number): void;
+  // Routes an already normalized message again, replacing its deliveries; false when it
+  // has nothing to route.
+  reroute(messageId: number): boolean;
 }
 
 export interface PipelineDeps {
   db: Database;
   adapters: AdapterRegistry;
   queue: Queue;
+  settings: SettingsStore;
 }
 
-export function createPipeline({ db, adapters, queue }: PipelineDeps): Pipeline {
+export function createPipeline({ db, adapters, queue, settings }: PipelineDeps): Pipeline {
   return {
     process(messageId) {
       const stored = db.getMessage(messageId);
@@ -73,17 +81,44 @@ export function createPipeline({ db, adapters, queue }: PipelineDeps): Pipeline 
         return;
       }
       db.updateMessage(messageId, { status: 'normalized', normalized: messages });
+      routeStored(source, messageId, messages);
+    },
 
-      const routes = db.listRoutes(source.id);
-      let queued = 0;
-      for (const message of messages) {
-        const channelId = route(message, routes);
-        if (channelId) {
-          queue.enqueue(messageId, channelId, renderEmbed(message, { sourceName: source.name }));
-          queued++;
-        }
-      }
-      db.updateMessage(messageId, { status: queued > 0 ? 'queued' : 'unrouted' });
+    reroute(messageId) {
+      const stored = db.getMessage(messageId);
+      const source = stored && db.getSource(stored.sourceId);
+      if (!stored?.normalized?.length || !source) return false;
+      db.deleteDeliveries(messageId);
+      routeStored(source, messageId, stored.normalized);
+      return true;
     },
   };
+
+  // Routes each normalized message with the current rules and mutes, queueing one
+  // delivery per channel.
+  function routeStored(source: Source, messageId: number, messages: StandardMessage[]) {
+    const routes = db.listRoutes();
+    const { fallbackChannelId } = settings.hub();
+    const mutes = createMuteCheck(db.listActiveMutes(new Date().toISOString()));
+    const outcomes = new Set<string>();
+    for (const message of messages) {
+      const result = route(message, source.id, routes, fallbackChannelId, mutes);
+      outcomes.add(result.outcome);
+      for (const { channelId, routeId, mentions } of result.deliveries) {
+        const embed = renderEmbed(message, { sourceName: source.name });
+        queue.enqueue(messageId, channelId, embed, {
+          ...(routeId === null ? { fallback: true } : { routeId }),
+          ...(mentions.length ? { content: mentions.join(' ') } : {}),
+        });
+      }
+    }
+    const status: MessageStatus = outcomes.has('sent')
+      ? 'queued'
+      : outcomes.has('muted')
+        ? 'muted'
+        : outcomes.has('dropped')
+          ? 'dropped'
+          : 'unrouted';
+    db.updateMessage(messageId, { status });
+  }
 }

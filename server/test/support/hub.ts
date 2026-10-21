@@ -25,9 +25,12 @@ export interface TestHubOptions {
   ready?: boolean;
   // Whether a bot token and guild are saved.
   configured?: boolean;
-  bodyLimitBytes?: number;
+  // Null uses the body limit setting, as a real start does.
+  bodyLimitBytes?: number | null;
   webRoot?: string;
   keepAliveMs?: number;
+  // Records every log line at trace level in `logs`.
+  captureLogs?: boolean;
 }
 
 // A full hub on an in-memory database, with one source and route and a fake Discord connection.
@@ -37,7 +40,9 @@ export function createTestHub({
   bodyLimitBytes = 4096,
   webRoot,
   keepAliveMs,
+  captureLogs = false,
 }: TestHubOptions = {}) {
+  const logs: string[] = [];
   const sqlite = openSqlite(':memory:');
   const db = createSqliteDatabase(sqlite, createSecretBox(APP_SECRET));
   if (configured) {
@@ -52,7 +57,7 @@ export function createTestHub({
     enabled: true,
     config: {},
   });
-  db.replaceRoutes(SOURCE_ID, [{ priority: 1, channelId: 'channel-1', enabled: true }]);
+  db.replaceRoutes(SOURCE_ID, [{ channelId: 'channel-1' }]);
 
   let isReady = ready;
   let sent = 0;
@@ -83,13 +88,16 @@ export function createTestHub({
     createHub({
       sqlite,
       appSecret: APP_SECRET,
-      bodyLimitBytes,
+      ...(bodyLimitBytes === null ? {} : { bodyLimitBytes }),
       connect,
       discordRest,
       webRoot,
       idleMs: 5,
       keepAliveMs,
       setupCode: SETUP_CODE,
+      ...(captureLogs
+        ? { logger: { level: 'trace', stream: { write: (line: string) => void logs.push(line) } } }
+        : {}),
     });
   let hub = start();
 
@@ -103,6 +111,7 @@ export function createTestHub({
     sqlite,
     send,
     connect,
+    logs,
     setReady(value: boolean) {
       isReady = value;
     },
@@ -145,4 +154,16 @@ export async function login(hub: TestHub): Promise<string> {
   const cookie = response.cookies.find((c) => c.name === 'nh_session');
   if (!cookie) throw new Error(`Login failed: ${response.statusCode} ${response.body}`);
   return `nh_session=${cookie.value}`;
+}
+
+// Logs in once and returns a function for admin API calls with that session.
+export async function adminClient(hub: TestHub) {
+  const cookie = await login(hub);
+  return (method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', url: string, payload?: unknown) =>
+    hub.app.inject({
+      method,
+      url,
+      headers: { cookie },
+      ...(payload === undefined ? {} : { payload: payload as object }),
+    });
 }

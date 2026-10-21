@@ -1,4 +1,4 @@
-import type { Embed, StandardMessage } from '@notify-hub/shared';
+import type { Embed, MuteScope, RouteAction, RouteConditions, StandardMessage } from '@notify-hub/shared';
 import { sql } from 'drizzle-orm';
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
@@ -38,16 +38,22 @@ export const routes = sqliteTable(
   'routes',
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
-    sourceId: text('source_id')
-      .notNull()
-      .references(() => sources.id, { onDelete: 'cascade' }),
+    name: text('name').notNull().default(''),
+    // Null applies the rule to every source.
+    sourceId: text('source_id').references(() => sources.id, { onDelete: 'cascade' }),
     // Lower numbers are checked first.
     priority: integer('priority').notNull(),
-    conditions: text('conditions', { mode: 'json' }).$type<Record<string, unknown>>().notNull().default({}),
-    channelId: text('channel_id').notNull(),
+    conditions: text('conditions', { mode: 'json' }).$type<RouteConditions>().notNull().default({}),
+    action: text('action').$type<RouteAction>().notNull().default('send'),
+    // Null for drop rules.
+    channelId: text('channel_id'),
+    // Discord mention syntax, sent as the message text.
+    mentions: text('mentions', { mode: 'json' }).$type<string[]>().notNull().default([]),
     enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+    // When false, a match stops the search.
+    continueMatching: integer('continue_matching', { mode: 'boolean' }).notNull().default(false),
   },
-  (table) => [index('routes_source_idx').on(table.sourceId, table.priority)],
+  (table) => [index('routes_priority_idx').on(table.priority, table.id)],
 );
 
 export const messages = sqliteTable(
@@ -79,6 +85,12 @@ export const deliveries = sqliteTable(
       .notNull()
       .references(() => messages.id, { onDelete: 'cascade' }),
     channelId: text('channel_id').notNull(),
+    // The rule that chose the channel, when one did.
+    routeId: integer('route_id'),
+    // Sent to the fallback channel because no rule matched.
+    fallback: integer('fallback', { mode: 'boolean' }).notNull().default(false),
+    // Message text sent with the embed, such as mentions.
+    content: text('content'),
     embed: text('embed', { mode: 'json' }).$type<Embed>().notNull(),
     attempt: integer('attempt').notNull().default(0),
     status: text('status').notNull(),
@@ -157,6 +169,34 @@ export const discarded = sqliteTable(
     index('discarded_last_seen_idx').on(table.lastSeen),
   ],
 );
+
+// Discarded requests per hour, for counts the grouped discarded rows cannot give.
+export const discardCounts = sqliteTable('discard_counts', {
+  // Start of the hour, ISO 8601 in UTC.
+  hour: text('hour').primaryKey(),
+  count: integer('count').notNull(),
+});
+
+// Silences a source, a rule, or an event name until a time, or until removed when until is null.
+export const mutes = sqliteTable(
+  'mutes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    scope: text('scope').$type<MuteScope>().notNull(),
+    target: text('target').notNull(),
+    until: text('until'),
+    reason: text('reason').notNull().default(''),
+    keepErrors: integer('keep_errors', { mode: 'boolean' }).notNull().default(false),
+    createdAt: text('created_at').notNull().default(now),
+  },
+  (table) => [index('mutes_target_idx').on(table.scope, table.target)],
+);
+
+// Addresses blocked for bad webhook requests, kept across restarts.
+export const addressBlocks = sqliteTable('address_blocks', {
+  address: text('address').primaryKey(),
+  until: text('until').notNull(),
+});
 
 export const sessions = sqliteTable(
   'sessions',

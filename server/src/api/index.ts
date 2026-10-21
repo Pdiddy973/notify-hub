@@ -6,6 +6,8 @@ export interface DeliveryJob {
   deliveryId: number;
   channelId: string;
   embed: Embed;
+  // Mentions sent as the message text.
+  content?: string;
 }
 
 // The backend calls the bot may make. Async so the bot can move to a separate
@@ -27,7 +29,12 @@ export function createBotApi({ db, queue }: BotApiDeps): BotApi {
     async claimDelivery() {
       const delivery = queue.claim();
       return delivery
-        ? { deliveryId: delivery.id, channelId: delivery.channelId, embed: delivery.embed }
+        ? {
+            deliveryId: delivery.id,
+            channelId: delivery.channelId,
+            embed: delivery.embed,
+            ...(delivery.content ? { content: delivery.content } : {}),
+          }
         : null;
     },
     async completeDelivery(deliveryId, discordMessageId) {

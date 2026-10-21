@@ -1,16 +1,39 @@
 import BetterSqlite3 from 'better-sqlite3';
-import { and, asc, desc, eq, inArray, lt, sql, type SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  max,
+  ne,
+  or,
+  sql,
+  sum,
+  type SQL,
+} from 'drizzle-orm';
 import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { fileURLToPath } from 'node:url';
 import type { SecretBox } from '../security/index.js';
 import type {
   Database,
   Delivery,
   DeliveryStatus,
+  DiscardFilter,
   DiscardReason,
   DiscardRow,
   MessageStatus,
+  Mute,
+  SourceListing,
   StoredMessage,
 } from './index.js';
 import * as schema from './schema.js';
@@ -35,6 +58,18 @@ export function openSqlite(file: string): SqliteHandle {
 
 const isoNow = () => new Date().toISOString();
 
+// Most address blocks kept across restarts; the blocker tracks the same number in memory.
+const MAX_SAVED_BLOCKS = 10_000;
+
+// Start of the UTC hour containing the given time.
+const hourOf = (iso: string) => `${new Date(iso).toISOString().slice(0, 13)}:00:00.000Z`;
+
+// Matches text anywhere in the column, with %, _, and \ taken literally.
+function contains(column: SQLiteColumn, text: string): SQL {
+  const pattern = `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  return sql`${column} like ${pattern} escape '\\'`;
+}
+
 // Converts null columns to absent properties.
 function compact<T extends Record<string, unknown>>(row: T): { [K in keyof T]: Exclude<T[K], null> } {
   return Object.fromEntries(Object.entries(row).filter(([, value]) => value !== null)) as {
@@ -47,6 +82,38 @@ export function createSqliteDatabase({ orm }: SqliteHandle, secrets: SecretBox):
     compact({ ...row, status: row.status as MessageStatus });
   const toDelivery = (row: typeof schema.deliveries.$inferSelect): Delivery =>
     compact({ ...row, status: row.status as DeliveryStatus });
+  const toMute = (row: typeof schema.mutes.$inferSelect): Mute => row;
+
+  const getRoute = (id: number) => orm.select().from(schema.routes).where(eq(schema.routes.id, id)).get();
+
+  const nextPriority = () =>
+    (orm
+      .select({ top: max(schema.routes.priority) })
+      .from(schema.routes)
+      .get()?.top ?? 0) + 1;
+
+  const discardConditions = ({ source, reason, address, since }: DiscardFilter): SQL | undefined => {
+    const { discarded } = schema;
+    const conditions: SQL[] = [];
+    if (source) conditions.push(contains(discarded.sourceTried, source));
+    if (reason) conditions.push(eq(discarded.reason, reason));
+    if (address) conditions.push(contains(discarded.clientAddress, address));
+    if (since) conditions.push(gte(discarded.lastSeen, since));
+    return conditions.length ? and(...conditions) : undefined;
+  };
+
+  // Deletes the oldest rows beyond maxRows.
+  const capDiscarded = (maxRows: number): number => {
+    const { discarded } = schema;
+    const total = orm.select({ n: count() }).from(discarded).get()?.n ?? 0;
+    if (total <= maxRows) return 0;
+    const oldest = orm
+      .select({ id: discarded.id })
+      .from(discarded)
+      .orderBy(asc(discarded.lastSeen), asc(discarded.id))
+      .limit(total - maxRows);
+    return orm.delete(discarded).where(inArray(discarded.id, oldest)).run().changes;
+  };
 
   return {
     ping() {
@@ -79,6 +146,10 @@ export function createSqliteDatabase({ orm }: SqliteHandle, secrets: SecretBox):
         .run();
     },
 
+    deleteSetting(key) {
+      orm.delete(schema.settings).where(eq(schema.settings.key, key)).run();
+    },
+
     getSource(id) {
       const row = orm.select().from(schema.sources).where(eq(schema.sources.id, id)).get();
       if (!row) return undefined;
@@ -89,6 +160,12 @@ export function createSqliteDatabase({ orm }: SqliteHandle, secrets: SecretBox):
         token: secrets.decrypt(row.token),
         enabled: row.enabled,
         config: row.config,
+        ...(row.previousToken && row.previousTokenExpiresAt
+          ? {
+              previousToken: secrets.decrypt(row.previousToken),
+              previousTokenExpiresAt: row.previousTokenExpiresAt,
+            }
+          : {}),
       };
     },
 
@@ -101,6 +178,44 @@ export function createSqliteDatabase({ orm }: SqliteHandle, secrets: SecretBox):
         .run();
     },
 
+    createSource(source) {
+      const result = orm
+        .insert(schema.sources)
+        .values({ ...source, token: secrets.encrypt(source.token) })
+        .onConflictDoNothing()
+        .run();
+      return result.changes === 1;
+    },
+
+    updateSource(id, changes) {
+      const exists = () =>
+        orm.select({ id: schema.sources.id }).from(schema.sources).where(eq(schema.sources.id, id)).get();
+      if (Object.keys(changes).length === 0) return exists() !== undefined;
+      return orm.update(schema.sources).set(changes).where(eq(schema.sources.id, id)).run().changes === 1;
+    },
+
+    deleteSource(id) {
+      return orm.delete(schema.sources).where(eq(schema.sources.id, id)).run().changes === 1;
+    },
+
+    rotateSourceToken(id, token, previousExpiresAt) {
+      const row = orm
+        .select({ token: schema.sources.token })
+        .from(schema.sources)
+        .where(eq(schema.sources.id, id))
+        .get();
+      if (!row) return;
+      orm
+        .update(schema.sources)
+        .set({
+          token: secrets.encrypt(token),
+          previousToken: row.token,
+          previousTokenExpiresAt: previousExpiresAt,
+        })
+        .where(eq(schema.sources.id, id))
+        .run();
+    },
+
     listSources() {
       return orm
         .select({
@@ -108,34 +223,82 @@ export function createSqliteDatabase({ orm }: SqliteHandle, secrets: SecretBox):
           name: schema.sources.name,
           type: schema.sources.type,
           enabled: schema.sources.enabled,
+          createdAt: schema.sources.createdAt,
+          previousTokenExpiresAt: schema.sources.previousTokenExpiresAt,
         })
         .from(schema.sources)
-        .orderBy(asc(schema.sources.name))
+        .orderBy(asc(schema.sources.name), asc(schema.sources.id))
+        .all()
+        .map((row): SourceListing => compact(row));
+    },
+
+    lastMessageTimes() {
+      const rows = orm
+        .select({ sourceId: schema.messages.sourceId, last: max(schema.messages.receivedAt) })
+        .from(schema.messages)
+        .groupBy(schema.messages.sourceId)
         .all();
+      return new Map(rows.flatMap((row) => (row.last ? [[row.sourceId, row.last] as const] : [])));
     },
 
     listRoutes(sourceId) {
       return orm
-        .select({
-          id: schema.routes.id,
-          sourceId: schema.routes.sourceId,
-          priority: schema.routes.priority,
-          channelId: schema.routes.channelId,
-          enabled: schema.routes.enabled,
-        })
+        .select()
         .from(schema.routes)
-        .where(eq(schema.routes.sourceId, sourceId))
+        .where(sourceId === undefined ? undefined : eq(schema.routes.sourceId, sourceId))
         .orderBy(asc(schema.routes.priority), asc(schema.routes.id))
         .all();
+    },
+
+    getRoute,
+
+    insertRoute(route) {
+      return orm
+        .insert(schema.routes)
+        .values({ ...route, priority: nextPriority() })
+        .returning()
+        .get();
+    },
+
+    updateRoute(id, changes) {
+      if (Object.keys(changes).length > 0) {
+        orm.update(schema.routes).set(changes).where(eq(schema.routes.id, id)).run();
+      }
+      return getRoute(id);
+    },
+
+    deleteRoute(id) {
+      return orm.delete(schema.routes).where(eq(schema.routes.id, id)).run().changes === 1;
+    },
+
+    reorderRoutes(ids) {
+      orm.transaction((tx) => {
+        const listed = new Set(ids);
+        const rest = tx
+          .select({ id: schema.routes.id })
+          .from(schema.routes)
+          .orderBy(asc(schema.routes.priority), asc(schema.routes.id))
+          .all()
+          .map((row) => row.id)
+          .filter((id) => !listed.has(id));
+        [...listed, ...rest].forEach((id, index) => {
+          tx.update(schema.routes)
+            .set({ priority: index + 1 })
+            .where(eq(schema.routes.id, id))
+            .run();
+        });
+      });
     },
 
     replaceRoutes(sourceId, routes) {
       orm.transaction((tx) => {
         tx.delete(schema.routes).where(eq(schema.routes.sourceId, sourceId)).run();
-        for (const route of routes)
+        const first = nextPriority();
+        routes.forEach((route, index) => {
           tx.insert(schema.routes)
-            .values({ ...route, sourceId })
+            .values({ ...route, sourceId, priority: first + index })
             .run();
+        });
       });
     },
 
@@ -198,9 +361,12 @@ export function createSqliteDatabase({ orm }: SqliteHandle, secrets: SecretBox):
         );
       }
       if (q) {
-        const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
         conditions.push(
-          sql`(${messages.rawPayload} like ${like} escape '\\' or ${messages.normalized} like ${like} escape '\\' or ${messages.error} like ${like} escape '\\')`,
+          or(
+            contains(messages.rawPayload, q),
+            contains(messages.normalized, q),
+            contains(messages.error, q),
+          )!,
         );
       }
       if (before) conditions.push(lt(messages.id, before));
@@ -267,7 +433,50 @@ export function createSqliteDatabase({ orm }: SqliteHandle, secrets: SecretBox):
         .run().changes;
     },
 
-    recordDiscard(entry) {
+    requeueFailedDeliveries(messageId) {
+      return orm
+        .update(schema.deliveries)
+        .set({ status: 'queued', error: null })
+        .where(and(eq(schema.deliveries.messageId, messageId), eq(schema.deliveries.status, 'failed')))
+        .run().changes;
+    },
+
+    deleteDeliveries(messageId) {
+      orm.delete(schema.deliveries).where(eq(schema.deliveries.messageId, messageId)).run();
+    },
+
+    queueDepth() {
+      const row = orm
+        .select({ n: count() })
+        .from(schema.deliveries)
+        .where(inArray(schema.deliveries.status, ['queued', 'sending']))
+        .get();
+      return row?.n ?? 0;
+    },
+
+    messageStats(since) {
+      const { messages } = schema;
+      const rows = orm
+        .select({
+          sourceId: messages.sourceId,
+          count: count(),
+          failed: sum(sql`${messages.status} = 'failed'`).mapWith(Number),
+          unrouted: sum(sql`${messages.status} = 'unrouted'`).mapWith(Number),
+        })
+        .from(messages)
+        .where(gte(messages.receivedAt, since))
+        .groupBy(messages.sourceId)
+        .all();
+      const total = (key: 'count' | 'failed' | 'unrouted') => rows.reduce((n, row) => n + row[key], 0);
+      return {
+        total: total('count'),
+        failed: total('failed'),
+        unrouted: total('unrouted'),
+        bySource: rows.map(({ sourceId, count }) => ({ sourceId, count })),
+      };
+    },
+
+    recordDiscard(entry, { maxRows } = {}) {
       const seen = isoNow();
       const details = {
         userAgent: entry.userAgent ?? null,
@@ -284,15 +493,54 @@ export function createSqliteDatabase({ orm }: SqliteHandle, secrets: SecretBox):
           set: { ...details, lastSeen: seen, repeatCount: sql`${schema.discarded.repeatCount} + 1` },
         })
         .run();
+      orm
+        .insert(schema.discardCounts)
+        .values({ hour: hourOf(seen), count: 1 })
+        .onConflictDoUpdate({
+          target: schema.discardCounts.hour,
+          set: { count: sql`${schema.discardCounts.count} + 1` },
+        })
+        .run();
+      if (maxRows !== undefined) capDiscarded(maxRows);
     },
 
-    listDiscarded() {
+    listDiscarded(filter = {}) {
       return orm
         .select()
         .from(schema.discarded)
-        .orderBy(asc(schema.discarded.id))
+        .where(discardConditions(filter))
+        .orderBy(desc(schema.discarded.lastSeen), desc(schema.discarded.id))
+        .limit(filter.limit ?? -1)
+        .offset(filter.offset ?? 0)
         .all()
         .map((row): DiscardRow => compact({ ...row, reason: row.reason as DiscardReason }));
+    },
+
+    countDiscarded(filter = {}) {
+      const row = orm.select({ n: count() }).from(schema.discarded).where(discardConditions(filter)).get();
+      return row?.n ?? 0;
+    },
+
+    clearDiscarded() {
+      return orm.delete(schema.discarded).run().changes;
+    },
+
+    pruneDiscarded(before, maxRows) {
+      orm
+        .delete(schema.discardCounts)
+        .where(lt(schema.discardCounts.hour, hourOf(before)))
+        .run();
+      const old = orm.delete(schema.discarded).where(lt(schema.discarded.lastSeen, before)).run().changes;
+      return old + capDiscarded(maxRows);
+    },
+
+    discardedSince(since) {
+      const row = orm
+        .select({ n: sum(schema.discardCounts.count).mapWith(Number) })
+        .from(schema.discardCounts)
+        .where(gte(schema.discardCounts.hour, hourOf(since)))
+        .get();
+      return row?.n ?? 0;
     },
 
     createSession(idHash, { createdAt, expiresAt, userAgent }) {
@@ -312,6 +560,73 @@ export function createSqliteDatabase({ orm }: SqliteHandle, secrets: SecretBox):
 
     deleteSession(idHash) {
       orm.delete(schema.sessions).where(eq(schema.sessions.idHash, idHash)).run();
+    },
+
+    deleteSessionsExcept(idHash) {
+      return orm.delete(schema.sessions).where(ne(schema.sessions.idHash, idHash)).run().changes;
+    },
+
+    listActiveMutes(now) {
+      return orm
+        .select()
+        .from(schema.mutes)
+        .where(or(isNull(schema.mutes.until), gt(schema.mutes.until, now)))
+        .orderBy(asc(schema.mutes.id))
+        .all()
+        .map(toMute);
+    },
+
+    insertMute(mute) {
+      return toMute(orm.insert(schema.mutes).values(mute).returning().get());
+    },
+
+    deleteMute(id) {
+      return orm.delete(schema.mutes).where(eq(schema.mutes.id, id)).run().changes === 1;
+    },
+
+    pruneMutes(now) {
+      return orm
+        .delete(schema.mutes)
+        .where(and(isNotNull(schema.mutes.until), lte(schema.mutes.until, now)))
+        .run().changes;
+    },
+
+    deleteMutesFor(scope, target) {
+      orm
+        .delete(schema.mutes)
+        .where(and(eq(schema.mutes.scope, scope), eq(schema.mutes.target, target)))
+        .run();
+    },
+
+    listAddressBlocks(now) {
+      return orm.select().from(schema.addressBlocks).where(gt(schema.addressBlocks.until, now)).all();
+    },
+
+    saveAddressBlock(address, until) {
+      const { addressBlocks } = schema;
+      orm
+        .insert(addressBlocks)
+        .values({ address, until })
+        .onConflictDoUpdate({ target: addressBlocks.address, set: { until } })
+        .run();
+      // Keeps the blocks that end last, like the in-memory list.
+      const total = orm.select({ n: count() }).from(addressBlocks).get()?.n ?? 0;
+      if (total > MAX_SAVED_BLOCKS) {
+        const first = orm
+          .select({ address: addressBlocks.address })
+          .from(addressBlocks)
+          .orderBy(asc(addressBlocks.until))
+          .limit(total - MAX_SAVED_BLOCKS);
+        orm.delete(addressBlocks).where(inArray(addressBlocks.address, first)).run();
+      }
+    },
+
+    deleteAddressBlock(address) {
+      orm.delete(schema.addressBlocks).where(eq(schema.addressBlocks.address, address)).run();
+    },
+
+    pruneAddressBlocks(now) {
+      return orm.delete(schema.addressBlocks).where(lte(schema.addressBlocks.until, now)).run().changes;
     },
 
     pruneSessions(now) {

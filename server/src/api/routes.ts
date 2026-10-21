@@ -3,6 +3,7 @@ import {
   discordSettingsSchema,
   discordVerifySchema,
   loginSchema,
+  messageParamsSchema,
   messageQuerySchema,
   setupAccountSchema,
   setupFinishSchema,
@@ -11,20 +12,28 @@ import {
   type DiscordVerifyResult,
   type MessagePage,
   type SessionInfo,
+  type ResendResult,
   type SetupFinishResult,
-  type SourceSummary,
 } from '@notify-hub/shared';
 import type { FastifyInstance } from 'fastify';
 import type { AdapterRegistry } from '../adapters/index.js';
 import type { MessageEvents } from '../core/events.js';
+import type { Pipeline } from '../core/index.js';
+import type { SettingsStore } from '../core/settings.js';
 import { settingKeys, type Database } from '../db/index.js';
 import { botTokenProblem, DiscordTokenRejected } from '../discord/index.js';
-import type { Ingest } from '../ingest/index.js';
+import type { AddressBlocker, Ingest } from '../ingest/index.js';
+import type { Queue } from '../queue/index.js';
 import { generateSetupCode, generateToken, setupCodesMatch } from '../security/index.js';
 import { hashPassword, verifyPassword } from '../security/password.js';
 import { createAuth, createLoginLimiter } from './auth.js';
+import { registerDiscardedRoutes } from './discarded.js';
 import { ApiProblem, fieldProblem, parseWith } from './errors.js';
 import { messageDetail, summarizeMessages } from './messages.js';
+import { registerMuteRoutes } from './mutes.js';
+import { registerRoutingRoutes } from './routing.js';
+import { registerSettingsRoutes } from './settings.js';
+import { registerSourceRoutes } from './sources.js';
 import { openMessageStream } from './stream.js';
 
 declare module 'fastify' {
@@ -46,9 +55,16 @@ export interface DiscordControl {
 export interface AdminApiDeps {
   db: Database;
   ingest: Ingest;
+  pipeline: Pipeline;
+  queue: Queue;
   adapters: AdapterRegistry;
   discord: DiscordControl;
   events: MessageEvents;
+  settings: SettingsStore;
+  blocker: AddressBlocker;
+  version: string;
+  // The webhook body limit in use since the hub started.
+  activeBodyLimitBytes: number;
   keepAliveMs?: number;
   // One-time code the first-run setup asks for; generated when not given.
   setupCode?: string;
@@ -69,7 +85,8 @@ const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 // The admin API under /api; everything except the routes marked public needs a login.
 export function registerAdminApi(app: FastifyInstance, deps: AdminApiDeps) {
-  const { db, ingest, adapters, discord, events, keepAliveMs = 15_000 } = deps;
+  const { db, ingest, pipeline, queue, adapters, discord, events, settings, blocker } = deps;
+  const keepAliveMs = deps.keepAliveMs ?? 15_000;
   const setupCode = deps.setupCode ?? generateSetupCode();
 
   app.register(
@@ -171,9 +188,9 @@ export function registerAdminApi(app: FastifyInstance, deps: AdminApiDeps) {
           enabled: true,
           config: {},
         });
-        db.replaceRoutes(TEST_SOURCE_ID, [{ priority: 1, channelId, enabled: true }]);
+        db.replaceRoutes(TEST_SOURCE_ID, [{ name: 'Test messages', channelId }]);
         db.setSetting(settingKeys.setupCompletedAt, new Date().toISOString());
-        return { sourceId: TEST_SOURCE_ID, hookPath: `/hook/${TEST_SOURCE_ID}/${token}` };
+        return { sourceId: TEST_SOURCE_ID };
       });
 
       // Discord
@@ -222,37 +239,17 @@ export function registerAdminApi(app: FastifyInstance, deps: AdminApiDeps) {
 
       api.get('/channels', async (): Promise<ChannelInfo[]> => listGuildChannels());
 
-      // Sources
-
-      api.get('/sources', async (): Promise<SourceSummary[]> => db.listSources());
-
-      // Sends the adapter's first sample through ingest, like a real webhook.
-      api.post('/sources/:id/test', async (request, reply) => {
-        const { id } = request.params as { id: string };
-        const source = db.getSource(id);
-        if (!source) throw new ApiProblem(404, 'Source not found');
-        const adapter = adapters.get(source.type);
-        const sample = adapter?.samples[0];
-        if (!adapter || !sample)
-          throw new ApiProblem(409, `The ${source.type} adapter has no sample to send`);
-        const body =
-          adapter.parse === 'json'
-            ? JSON.stringify(sample.body)
-            : adapter.parse === 'form'
-              ? new URLSearchParams(sample.body as Record<string, string>).toString()
-              : String(sample.body);
-        const contentType =
-          adapter.parse === 'json'
-            ? 'application/json'
-            : adapter.parse === 'form'
-              ? 'application/x-www-form-urlencoded'
-              : 'text/plain';
-        const messageId = ingest.accept(source, {
-          headers: { 'content-type': contentType, 'user-agent': 'notify-hub test button' },
-          body,
-          contentType,
-        });
-        return reply.code(202).send({ messageId });
+      registerSourceRoutes(api, { db, ingest, adapters });
+      registerRoutingRoutes(api, { db, settings });
+      registerMuteRoutes(api, { db });
+      registerDiscardedRoutes(api, { db, settings, blocker });
+      registerSettingsRoutes(api, {
+        db,
+        settings,
+        auth,
+        limiter,
+        version: deps.version,
+        activeBodyLimitBytes: deps.activeBodyLimitBytes,
       });
 
       // Messages
@@ -268,10 +265,24 @@ export function registerAdminApi(app: FastifyInstance, deps: AdminApiDeps) {
       });
 
       api.get('/messages/:id', async (request) => {
-        const id = Number((request.params as { id: string }).id);
-        const message = Number.isInteger(id) ? db.getMessage(id) : undefined;
+        const { id } = parseWith(messageParamsSchema, request.params);
+        const message = db.getMessage(id);
         if (!message) throw new ApiProblem(404, 'Message not found');
         return messageDetail(db, message);
+      });
+
+      // Queues failed deliveries again; a message that was not sent anywhere is routed
+      // again with the current rules and mutes.
+      api.post('/messages/:id/resend', async (request): Promise<ResendResult> => {
+        const { id } = parseWith(messageParamsSchema, request.params);
+        const message = db.getMessage(id);
+        if (!message) throw new ApiProblem(404, 'Message not found');
+        const requeued = queue.retryFailed(id);
+        if (requeued > 0) return { requeued, rerouted: false };
+        if (['unrouted', 'muted', 'dropped'].includes(message.status) && pipeline.reroute(id)) {
+          return { requeued: 0, rerouted: true };
+        }
+        throw new ApiProblem(409, 'Nothing to resend: no delivery failed and the message was already routed');
       });
 
       api.get('/stream', async (request, reply) => {

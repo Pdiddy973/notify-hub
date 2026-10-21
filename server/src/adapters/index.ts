@@ -17,15 +17,22 @@ export interface Adapter {
   // An empty array means the event is ignored on purpose.
   normalize(input: AdapterInput): AdapterMessage[];
   samples: { name: string; body: unknown }[];
+  // Setup instructions shown on the source page, as plain text.
+  help?: string;
 }
 
 export interface AdapterRegistry {
   get(id: string): Adapter | undefined;
+  // Sorted by name.
+  list(): Adapter[];
 }
 
 export function createRegistry(adapters: Adapter[]): AdapterRegistry {
   const byId = new Map(adapters.map((adapter) => [adapter.id, adapter]));
-  return { get: (id) => byId.get(id) };
+  return {
+    get: (id) => byId.get(id),
+    list: () => [...byId.values()].sort((a, b) => a.name.localeCompare(b.name)),
+  };
 }
 
 export const builtInAdapters: Adapter[] = [standardAdapter];

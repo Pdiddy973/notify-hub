@@ -9,6 +9,10 @@ export const standardAdapter: Adapter = {
   normalize({ body }) {
     return [adapterMessageSchema.parse(body)];
   },
+  help:
+    'Send a JSON POST to the webhook URL with event, severity (info, success, warning, error, or debug), ' +
+    'and title; body, fields, url, and imageUrl are optional. Use it from scripts, or from any service ' +
+    'that lets you write the JSON body yourself.',
   samples: [
     {
       name: 'basic',

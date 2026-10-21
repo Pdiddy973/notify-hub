@@ -1,9 +1,17 @@
-import type { DeliveryInfo, MessageDetail, MessageSummary } from '@notify-hub/shared';
+import {
+  HUB_SOURCE_ID,
+  type DeliveryInfo,
+  type MessageDetail,
+  type MessageSummary,
+} from '@notify-hub/shared';
 import type { Database, Delivery, StoredMessage } from '../db/index.js';
 
 // Builds the log rows for a set of stored messages.
 export function summarizeMessages(db: Database, messages: StoredMessage[]): MessageSummary[] {
-  const sourceNames = new Map(db.listSources().map((source) => [source.id, source.name]));
+  const sourceNames = new Map<string, string>([
+    [HUB_SOURCE_ID, 'Notify Hub'],
+    ...db.listSources().map((source) => [source.id, source.name] as const),
+  ]);
   const channelNames = new Map(db.listChannels().map((channel) => [channel.id, channel.name]));
   const deliveries = new Map<number, Delivery[]>();
   for (const delivery of db.listDeliveriesFor(messages.map((message) => message.id))) {
@@ -21,6 +29,7 @@ export function summarizeMessages(db: Database, messages: StoredMessage[]): Mess
       status: message.status,
       ...(first ? { event: first.event, severity: first.severity, title: first.title } : {}),
       destinations: [...new Set(own.map((d) => channelNames.get(d.channelId) ?? d.channelId))],
+      fallback: own.some((d) => d.fallback),
       hasError: Boolean(message.error) || own.some((d) => d.status === 'failed'),
     };
   });
@@ -35,6 +44,9 @@ export function messageDetail(db: Database, message: StoredMessage): MessageDeta
       id: delivery.id,
       channelId: delivery.channelId,
       ...(name ? { channelName: name } : {}),
+      ...(delivery.routeId === undefined ? {} : { routeId: delivery.routeId }),
+      fallback: delivery.fallback,
+      ...(delivery.content ? { content: delivery.content } : {}),
       embed: delivery.embed,
       attempt: delivery.attempt,
       status: delivery.status,

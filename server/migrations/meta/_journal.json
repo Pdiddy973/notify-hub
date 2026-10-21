@@ -15,6 +15,20 @@
       "when": 1791602688214,
       "tag": "0001_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792554685192,
+      "tag": "0002_routing",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792557703527,
+      "tag": "0003_actions_mutes",
+      "breakpoints": true
     }
   ]
 }
