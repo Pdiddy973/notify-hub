@@ -182,11 +182,15 @@ A source is one connected service. Each source has its own adapter, its own sett
 <summary>Add a source</summary>
 
 1. Open Sources and choose Add source.
-2. Pick an adapter. The hub generates a 256-bit random token and builds the full webhook URL.
-3. Copy the URL (or the ready-made script for health checks) and paste it into the service, following the setup help shown on the page.
-4. Use Test send to confirm a message reaches Discord.
+2. Pick a type (adapter) and a name. The id is suggested from the name; it is part of the webhook URL and cannot change later. The hub generates a 256-bit random token.
+3. Choose Copy URL (or the ready-made script for health checks) and paste it into the service, following the setup help shown on the page. URLs start with the **Webhook address** from Settings, such as `http://192.168.1.20:8080`. Without one they use the address in your browser, which is wrong when you browse the hub as `localhost`.
+4. Use Send a test message to confirm a message arrives, then add a [routing rule](#routing-and-formatting) if none covers the source yet.
 
 You never type or invent a token. The New adapter flow ends with the same step, so a new adapter file gets a source and URL straight away.
+
+- Turning a source off discards its webhooks (logged as `disabled source`) until it is turned on again.
+- Deleting a source also deletes the rules made only for it; its messages stay in the log.
+- Lists never contain the token. Copy URL and Show fetch the URL only when you click them.
 
 </details>
 
@@ -195,17 +199,22 @@ You never type or invent a token. The New adapter flow ends with the same step, 
 
 - The token goes in the URL path, or in an `X-Hub-Token` header for services that can set headers but not long URLs.
 - A wrong or missing token gets a generic 404, identical to an unknown source, so nothing can be probed.
-- The Discarded page lists one row per sender and reason (wrong token, missing token, unknown source, disabled source), with a repeat count, client address, user agent, and the source that was tried. It never stores the body, or the token sent beyond its first 4 characters and length.
-- An address that sends more than 20 bad requests in 10 minutes is blocked for a while and answered with 429. Both numbers are settings, and your LAN ranges can be exempted.
-- An optional alert posts to the alert channel when discards spike (default 50 in 10 minutes).
-- Retention for the Discarded log is its own setting (default 7 days).
+- The Discarded page lists one row per sender and reason (wrong token, missing token, expired token, unknown source, disabled source), with a repeat count, client address, user agent, and the source that was tried, linked when that source exists. It never stores the body, or the token sent beyond its first 4 characters and length.
+- An address that sends more than 20 bad requests in 10 minutes is blocked for 15 minutes and answered with 429, without further logging. The block covers every webhook from that address, including valid ones, so list hosts that run several services under Never block. Blocked addresses are shown on the page with an Unblock button, and blocks last through a restart.
+- A spike alert posts to the alert channel (set in Settings) when discards reach 50 in 10 minutes, at most once per 10 minutes. 0 turns it off.
+- The log keeps 7 days and at most 10,000 rows, dropping the oldest first. The dashboard and the nav bar show how many requests were discarded today.
+- Every number above is a setting on the Discarded page.
 
 </details>
 
 <details>
 <summary>Rotate a token</summary>
 
-Rotate token creates a new token and keeps the old one valid for 10 minutes, so you can update the sender without losing messages. Tokens are stored encrypted, so the URL can be shown again from the source page.
+Rotate token creates a new token and keeps the old one valid for 10 minutes, so you can update the sender without losing messages. The source page shows until when the old token works.
+
+- After the 10 minutes, the old token is rejected and logged as `expired token`, which points at a sender that still needs updating.
+- Rotating again within the 10 minutes ends the oldest token at once.
+- Tokens are stored encrypted, so the URL can be shown again from the source page.
 
 </details>
 
@@ -375,10 +384,38 @@ Routes decide which Discord channel gets a message, and one renderer gives every
 <details>
 <summary>Routing rules</summary>
 
-- A rule maps a source to a channel, with optional conditions on event type, severity, or text.
-- Rules are ordered by priority; drag to reorder. The rule tester shows which rule a sample message would match.
+- Rules form one list, checked from the top. Drag a rule, or use its arrows, to change the order.
+- A rule applies to one source or to any source, and can have conditions:
+  - **Events:** a list of event names, matched without case.
+  - **Severities:** a list; any one matches.
+  - **Text contains:** searched in the title, body, and fields, without case.
+
+  Every condition that is set must match, and a rule with no conditions matches every message.
+- The first matching rule sends the message to its channel and stops the search. Turn on Also check later rules to let later rules add more channels, for example "every error also goes to #alerts". A message goes to each channel only once.
+- A rule can **drop** messages instead, for example debug messages from one source. A matching drop rule stops the search and posts nothing, not even to the fallback channel. Rules above it that continue still send, and the log shows the message as dropped.
+- **Mentions:** a rule can ping roles or users along with the embed. Use Discord's syntax, separated by spaces:
+  - `@here` or `@everyone`
+  - `<@&role id>` for a role, `<@user id>` for a user
+
+  To copy an id, turn on Developer Mode in Discord, then right-click the role or user. Only the mentions on the rule notify; text inside a message never pings anyone. For `@here`, `@everyone`, and roles that are not mentionable, the bot needs the Mention Everyone permission. When two rules send to the same channel, their mentions are combined.
 - Channels come from the bot, so targets are dropdowns, not pasted IDs.
-- Unrouted messages go to a fallback channel you choose, or are logged as unrouted if none is set.
+- Messages that no rule matches go to the fallback channel, set on the Routing or Settings page, or are logged as unrouted if none is set. The log marks fallback deliveries.
+- The rule tester runs a typed message, or one loaded from the log, through the rules and active mutes without sending anything, and says why each rule did or did not match. While a rule is being edited, the tester can include the unsaved version.
+- A message that failed, or was not sent anywhere, can be sent again from its detail panel:
+  - **Resend failed deliveries** queues the failed sends again.
+  - **Route again** runs an unrouted, muted, or dropped message through the current rules and mutes.
+
+</details>
+
+<details>
+<summary>Mute and snooze</summary>
+
+- A mute silences one source, one rule, or one event name from every source, for 1 hour, 8 hours, 24 hours, a week, a custom number of hours, or until it is removed.
+- Muted messages are still received and kept in the log with status `muted`; they are not posted.
+- A mute can still let errors through, so a source in maintenance stays quiet unless something breaks.
+- A muted rule still counts as a match, so the message does not go to the fallback channel.
+- Mute sources and rules from their rows on the Sources and Routing pages. The Muted page lists every active mute, adds event mutes, and has Unmute buttons. Mutes end on their own.
+- This is different from turning a source off: a source that is off rejects its webhooks, which appear on the Discarded page.
 
 </details>
 
@@ -420,7 +457,7 @@ Optional `key` identifies what a message is about (for example host plus check) 
 | debug | Verbose or test | Grey |
 
 - Author line: source icon and name. Title and URL from the message; description is the body.
-- Up to 10 fields, inline where marked; thumbnail or image when provided.
+- Up to 25 fields (Discord's limit), inline where marked; thumbnail or image when provided.
 - Footer: event type, with the received time as the timestamp.
 - Discord limits are enforced (title 256, description 4096, 25 fields, 6000 characters in total); overflow is cut with an ellipsis and the full text stays in the log.
 - Per-source color map, icon, visible fields, and title template are set on the Formatting page with a live preview.
@@ -439,16 +476,17 @@ The UI is the control plane: setup, daily monitoring, and every setting live her
 | Page | What it does |
 | --- | --- |
 | First-run setup | Create the admin account, paste the bot token, pick the server, sync channels |
-| Dashboard | Messages per source, failures, queue depth, bot status, last message per source, discarded requests today |
+| Dashboard | Messages, failures, unrouted messages, and discarded requests today; queue depth, bot status, and messages and last message per source |
 | Live log | Streaming table with filters for source, status, severity, and text |
 | Message detail | Raw payload, normalized message, embed preview, delivery attempts and errors, resend |
-| Sources | Add a source, copy its URL, setup help, test send, enable, rotate token |
-| Routing | Rules, priority, conditions, channel, rule tester |
+| Sources | Add a source, copy its URL, setup help, test send, enable, rotate token, delete |
+| Routing | Rules, priority, conditions, channel, fallback channel, rule tester |
 | Formatting | Per-source colors, icon, title template, visible fields, live preview |
 | Adapters | Loaded files, status and errors, run samples, New adapter, approve permissions |
 | Updates | Running version, check now, release notes, apply, roll back, settings |
-| Discarded | Requests rejected for a wrong token or unknown source, with filters and settings |
-| Settings | Discord connection, retention, body size limit, admin password, remote access, export and import |
+| Muted | Active mutes of sources, rules, and events, with Unmute and a form for new mutes |
+| Discarded | Requests rejected for a wrong token or unknown source, with filters, blocked addresses, and settings |
+| Settings | Discord connection, alert and fallback channels, webhook address, retention, body size limit, admin password, remote access, export and import |
 
 </details>
 
@@ -625,14 +663,14 @@ The hub holds your bot token and routing, so it is LAN-first, authenticates ever
 
 | Concern | Approach |
 | --- | --- |
-| Ingest authentication | Per-source random token, stored encrypted and compared in constant time; wrong tokens are discarded and logged |
+| Ingest authentication | Per-source random token, generated by the hub, stored encrypted, and compared in constant time; wrong tokens are discarded and logged; a rotated token works for 10 more minutes only; the API returns a token only from the explicit URL request on the source page |
 | First-run setup | Creating the admin account needs a one-time code from the hub log (installer output or `journalctl -u notify-hub`), so nobody else on the network, or a website using DNS rebinding, can claim the hub first |
-| Admin login | Local account with an Argon2 password hash; HttpOnly, SameSite=Strict session cookie whose id is stored only as a hash; addresses are blocked for 10 minutes after 5 failed logins; changes sent from other sites are refused |
+| Admin login | Local account with an Argon2 password hash; HttpOnly, SameSite=Strict session cookie whose id is stored only as a hash; addresses are blocked for 10 minutes after 5 failed logins; changes sent from other sites are refused; changing the password needs the current one and logs out every other session |
 | Remote UI access | Cloudflare Tunnel plus Access in front of a localhost-only listener |
 | Public exposure | Nothing inbound; `/hook/*` is not served on the tunnel listener |
 | Secrets at rest | AES-256-GCM with a key from `APP_SECRET` |
 | Payload redaction | Any header or field whose name contains authorization, cookie, password, passwd, secret, token, apikey, privatekey, or credential is masked before storage |
-| Request limits | Body size cap, per-source rate limit, request timeout, address blocking for bad tokens |
+| Request limits | Body size cap, per-source rate limit, request timeout, address blocking for bad tokens, a discarded log with a row cap and retention |
 | Discord permissions | View channel, send messages, and embed links only |
 | Service account | Unprivileged `notifyhub` user with systemd hardening and no Docker socket |
 | Exports | Exclude secrets by default |
@@ -652,7 +690,7 @@ The hub holds your bot token and routing, so it is LAN-first, authenticates ever
 | `POST /hook/:sourceId/:token/discord` | Accept Discord-format payloads and restyle them |
 | `GET /health` | Ok or not ok, no login |
 
-Responses: 202 stored, 404 for a wrong token or unknown source (the same response), 413 oversize body, 429 temporarily blocked address. The body limit is 1 MB by default.
+Responses: 202 stored, 404 for a wrong token or unknown source (the same response), 413 oversize body, 429 temporarily blocked address. The body limit is 1 MB by default and is set in Settings; a change applies after a restart.
 
 </details>
 
@@ -663,15 +701,16 @@ Responses: 202 stored, 404 for a wrong token or unknown source (the same respons
 | --- | --- |
 | Setup and session | `POST /api/setup`, `POST /api/login`, `POST /api/logout` |
 | Discord | `GET/PUT /api/discord`, `POST /api/discord/sync-channels` |
-| Sources | `GET/POST /api/sources`, `PATCH/DELETE /api/sources/:id`, `POST /api/sources/:id/rotate-token`, `POST /api/sources/:id/test` |
-| Routes | `GET/POST /api/routes`, `PATCH/DELETE /api/routes/:id`, `POST /api/routes/preview` |
+| Sources | `GET/POST /api/sources`, `GET/PATCH/DELETE /api/sources/:id`, `POST /api/sources/:id/rotate-token`, `POST /api/sources/:id/url` (the only response with the token), `POST /api/sources/:id/test` |
+| Routes | `GET/POST /api/routes`, `PATCH/DELETE /api/routes/:id`, `PUT /api/routes/order`, `POST /api/routes/preview` |
 | Messages | `GET /api/messages`, `GET /api/messages/:id`, `POST /api/messages/:id/resend` |
+| Mutes | `GET/POST /api/mutes`, `DELETE /api/mutes/:id` |
 | Live feed | `GET /api/stream` (server-sent events) |
 | Adapters | `GET /api/adapters`, `POST /api/adapters`, `POST /api/adapters/:id/run-samples` |
 | Updates | `GET /api/updates`, `POST /api/updates/check`, `POST /api/updates/apply`, `POST /api/updates/rollback`, `PUT /api/updates/settings` |
 | Health | `GET /api/health`, `POST /api/health/run`, `PUT /api/health/settings` |
-| Discarded | `GET /api/discarded`, `DELETE /api/discarded`, `PUT /api/discarded/settings` |
-| Settings | `GET/PUT /api/settings`, `GET /api/export`, `POST /api/import` |
+| Discarded | `GET /api/discarded`, `DELETE /api/discarded`, `POST /api/discarded/unblock`, `GET/PUT /api/discarded/settings` |
+| Settings | `GET/PUT /api/settings`, `PUT /api/settings/password`, `GET /api/dashboard`, `GET /api/export`, `POST /api/import` |
 
 Every request body is validated; errors come back in a structured form the UI can show.
 
@@ -752,7 +791,7 @@ npm run format     # Prettier
 npm run build      # compiles to dist/; npm start runs the build
 ```
 
-Open the web UI and follow the first-run setup: admin account, bot token, server, and a test channel. After `npm run build`, the hub on port 8080 also serves the built UI. `npm run seed` still exists as a temporary command-line alternative until the Sources page arrives.
+Open the web UI and follow the first-run setup: admin account, bot token, server, and a test channel. After `npm run build`, the hub on port 8080 also serves the built UI.
 
 Database changes: edit `server/src/db/schema.ts`, then run `npm run db:generate -w @notify-hub/server` to write the next numbered migration into `server/migrations/`. Migrations run when the hub starts.
 
