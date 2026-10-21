@@ -83,7 +83,7 @@ Eleven SQLite tables hold all configuration and history, so the UI is the only p
 
 **Four added tables:** `adapters` (id, file path, version, load status, last error, approved permissions), `updates` (checked at, running version, latest version, status, applied at, result), `health_events` (check name, status, started at, resolved at, detail), and `discarded` (first seen, last seen, repeat count, client address, source tried, reason, user agent, method, content type, content length, token hint).
 
-**Statuses for messages:** received, normalized, queued, delivered, failed, unrouted, dropped.
+**Statuses for messages:** received, normalized, queued, delivered, failed, unrouted, dropped, muted.
 
 **Notes**
 
@@ -128,7 +128,7 @@ Every adapter outputs one internal shape, and one renderer turns it into a Disco
 
 - Author line: source icon and source name.
 - Title and URL from the standard message; description is the body.
-- Up to 10 fields, inline where marked.
+- Up to 25 fields (Discord's limit), inline where marked.
 - Thumbnail or image when provided.
 - Footer: event type; timestamp is the received time.
 - Limits enforced by the renderer: title 256, description 4096, 25 fields, 6000 total characters; overflow is truncated with an ellipsis and the full text stays in the log.
@@ -737,11 +737,11 @@ git push origin v0.1.0
 
 **Phase 3: Sources and routing in the UI**
 
-- [ ] Sources page: add (token generated automatically), edit, disable, rotate token, copy URL, test-send
-- [ ] Routing page with rule priority, conditions, and the rule tester
-- [ ] Unrouted fallback channel setting
+- [x] Sources page: add (token generated automatically), edit, disable, rotate token, copy URL, test-send
+- [x] Routing page with rule priority, conditions, and the rule tester
+- [x] Unrouted fallback channel setting
 
-* [ ] Discarded page and dashboard counter, with retention, address blocking, and spike alert settings
+* [x] Discarded page and dashboard counter, with retention, address blocking, and spike alert settings
 
 - Done when: no seed script is needed and every setting is changed through the UI.
 

@@ -21,8 +21,7 @@
     "test": "vitest run",
     "dev:web": "npm run dev -w @notify-hub/web",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "seed": "tsx --conditions=development --env-file-if-exists=.env server/src/seed.ts"
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

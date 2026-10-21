@@ -2,7 +2,7 @@ import type { SessionInfo } from '@notify-hub/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Navigate, NavLink, Outlet } from 'react-router';
 import { api } from '../lib/api';
-import { keys, useDiscordStatus, useSession } from '../lib/queries';
+import { keys, useDashboard, useDiscordStatus, useSession } from '../lib/queries';
 import { Button, Spinner } from './ui';
 
 // Sends visitors to setup or login until both are done.
@@ -41,6 +41,27 @@ function DiscordBadge() {
   );
 }
 
+const pages = [
+  { to: '/dashboard', label: 'Dashboard' },
+  { to: '/log', label: 'Live log' },
+  { to: '/sources', label: 'Sources' },
+  { to: '/routing', label: 'Routing' },
+  { to: '/muted', label: 'Muted' },
+  { to: '/discarded', label: 'Discarded' },
+  { to: '/settings', label: 'Settings' },
+];
+
+// Discarded requests since local midnight, shown next to the Discarded link.
+function DiscardedCount() {
+  const { data } = useDashboard();
+  if (!data?.discarded) return null;
+  return (
+    <span className="ml-1.5 rounded-full bg-warn/20 px-1.5 text-xs text-warn tabular-nums">
+      {data.discarded > 999 ? '999+' : data.discarded}
+    </span>
+  );
+}
+
 function Layout() {
   const session = useSession();
   const queryClient = useQueryClient();
@@ -62,13 +83,18 @@ function Layout() {
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-10 border-b border-line bg-surface">
         <div className="flex w-full items-center gap-4 px-4 py-2 sm:px-6">
-          <span className="font-semibold text-white">Notify Hub</span>
-          <nav className="flex gap-1">
-            <NavLink to="/log" className={navClass}>
-              Live log
-            </NavLink>
+          <span className="shrink-0 font-semibold text-white">Notify Hub</span>
+          <nav className="-mx-1 flex min-w-0 gap-1 overflow-x-auto px-1">
+            {pages.map((page) => (
+              <NavLink key={page.to} to={page.to} className={navClass}>
+                <span className="whitespace-nowrap">
+                  {page.label}
+                  {page.to === '/discarded' && <DiscardedCount />}
+                </span>
+              </NavLink>
+            ))}
           </nav>
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex shrink-0 items-center gap-3">
             <DiscordBadge />
             <span className="hidden text-sm text-muted md:inline">{session.data?.username}</span>
             <Button variant="ghost" onClick={() => logout.mutate()} disabled={logout.isPending}>

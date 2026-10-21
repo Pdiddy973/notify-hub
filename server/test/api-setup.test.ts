@@ -80,8 +80,10 @@ describe('first-run Discord setup', () => {
   it('finishes by creating a test source routed to the chosen channel', async () => {
     hub = createTestHub();
     const finished = await request('POST', '/api/setup/finish', { channelId: CHANNEL_ID });
-    const { sourceId, hookPath } = finished.json();
+    const { sourceId } = finished.json();
     expect(sourceId).toBe('test');
+    expect(finished.body).not.toContain(hub.db.getSource('test')!.token);
+    const { hookPath } = (await request('POST', '/api/sources/test/url')).json();
     expect((await request('GET', '/api/session')).json().setupComplete).toBe(true);
     expect(hub.db.listRoutes('test')).toMatchObject([{ channelId: CHANNEL_ID, enabled: true }]);
 
@@ -92,13 +94,15 @@ describe('first-run Discord setup', () => {
       payload: { event: 'test', severity: 'info', title: 'From the hook path' },
     });
     expect(posted.statusCode).toBe(202);
-    await vi.waitFor(() => expect(hub.send).toHaveBeenCalledWith(CHANNEL_ID, expect.anything()));
+    await vi.waitFor(() => expect(hub.send).toHaveBeenCalledWith(CHANNEL_ID, expect.anything(), undefined));
   });
 
   it('keeps the test source token when setup is finished again', async () => {
     hub = createTestHub();
-    const first = (await request('POST', '/api/setup/finish', { channelId: CHANNEL_ID })).json();
-    const second = (await request('POST', '/api/setup/finish', { channelId: CHANNEL_ID })).json();
-    expect(second.hookPath).toBe(first.hookPath);
+    await request('POST', '/api/setup/finish', { channelId: CHANNEL_ID });
+    const first = hub.db.getSource('test')!.token;
+    await request('POST', '/api/setup/finish', { channelId: CHANNEL_ID });
+    expect(hub.db.getSource('test')!.token).toBe(first);
+    expect(hub.db.listRoutes('test')).toHaveLength(1);
   });
 });

@@ -1,8 +1,15 @@
-import type { DeliveryStatus, Embed, MessageStatus, Severity, StandardMessage } from '@notify-hub/shared';
+import type {
+  DeliveryStatus,
+  DiscardReason,
+  Embed,
+  MessageStatus,
+  MuteInfo,
+  RouteInfo,
+  Severity,
+  StandardMessage,
+} from '@notify-hub/shared';
 
-export type { DeliveryStatus, MessageStatus };
-
-export type DiscardReason = 'wrong token' | 'missing token' | 'unknown source' | 'disabled source';
+export type { DeliveryStatus, DiscardReason, MessageStatus };
 
 export interface Source {
   id: string;
@@ -13,16 +20,34 @@ export interface Source {
   token: string;
   enabled: boolean;
   config: Record<string, unknown>;
+  // The token from before the last rotation and when it stops working.
+  previousToken?: string;
+  previousTokenExpiresAt?: string;
 }
 
-export interface Route {
-  id: number;
-  sourceId: string;
-  // Lower numbers are checked first.
-  priority: number;
-  channelId: string;
+export type NewSource = Omit<Source, 'previousToken' | 'previousTokenExpiresAt'>;
+
+// A source without its token or config.
+export interface SourceListing {
+  id: string;
+  name: string;
+  type: string;
   enabled: boolean;
+  createdAt: string;
+  previousTokenExpiresAt?: string;
 }
+
+export type Route = RouteInfo;
+
+// A new rule; it is added after the existing ones.
+export type NewRoute = Partial<
+  Pick<
+    Route,
+    'name' | 'sourceId' | 'conditions' | 'action' | 'channelId' | 'mentions' | 'enabled' | 'continueMatching'
+  >
+>;
+
+export type RouteChanges = Partial<Omit<Route, 'id' | 'priority'>>;
 
 export interface Channel {
   id: string;
@@ -47,6 +72,12 @@ export interface Delivery {
   id: number;
   messageId: number;
   channelId: string;
+  // The rule that chose the channel, when one did.
+  routeId?: number;
+  // Sent to the fallback channel because no rule matched.
+  fallback: boolean;
+  // Message text sent with the embed, such as mentions.
+  content?: string;
   embed: Embed;
   attempt: number;
   status: DeliveryStatus;
@@ -72,6 +103,25 @@ export interface DiscardRow extends DiscardEntry {
   lastSeen: string;
   repeatCount: number;
 }
+
+export interface DiscardFilter {
+  source?: string;
+  reason?: DiscardReason;
+  address?: string;
+  // Only rows last seen at or after this time.
+  since?: string;
+  offset?: number;
+  limit?: number;
+}
+
+export interface MessageStats {
+  total: number;
+  failed: number;
+  unrouted: number;
+  bySource: { sourceId: string; count: number }[];
+}
+
+export type Mute = Omit<MuteInfo, 'targetName'>;
 
 export interface Session {
   createdAt: string;
@@ -108,13 +158,32 @@ export interface Database {
 
   getSetting(key: string): string | undefined;
   setSetting(key: string, value: string, options?: { encrypted?: boolean }): void;
+  deleteSetting(key: string): void;
 
   getSource(id: string): Source | undefined;
-  saveSource(source: Source): void;
-  listSources(): Omit<Source, 'token' | 'config'>[];
+  // Inserts or replaces a source; a rotated previous token is kept.
+  saveSource(source: NewSource): void;
+  // False when the id is taken.
+  createSource(source: NewSource): boolean;
+  updateSource(id: string, changes: Partial<Pick<Source, 'name' | 'enabled' | 'config'>>): boolean;
+  // Also removes the source's routes; its messages stay in the log.
+  deleteSource(id: string): boolean;
+  // Makes token current and keeps the old one valid until previousExpiresAt.
+  rotateSourceToken(id: string, token: string, previousExpiresAt: string): void;
+  listSources(): SourceListing[];
+  // Time of the newest message per source.
+  lastMessageTimes(): Map<string, string>;
 
-  listRoutes(sourceId: string): Route[];
-  replaceRoutes(sourceId: string, routes: Omit<Route, 'id' | 'sourceId'>[]): void;
+  // In priority order; with a source id, only the rules that apply to that source alone.
+  listRoutes(sourceId?: string): Route[];
+  getRoute(id: number): Route | undefined;
+  insertRoute(route: NewRoute): Route;
+  updateRoute(id: number, changes: RouteChanges): Route | undefined;
+  deleteRoute(id: number): boolean;
+  // Sets priorities from the order of ids; ids not listed keep their place after them.
+  reorderRoutes(ids: number[]): void;
+  // Replaces the rules of one source with new ones at the end of the list.
+  replaceRoutes(sourceId: string, routes: Omit<NewRoute, 'sourceId'>[]): void;
 
   listChannels(): Channel[];
   // Replaces the stored channels of one guild.
@@ -136,14 +205,45 @@ export interface Database {
   updateDelivery(id: number, changes: Partial<Omit<Delivery, 'id'>>): void;
   // Returns deliveries left in sending by a stopped process to the queue.
   requeueInterrupted(): number;
+  // Returns a message's failed deliveries to the queue; returns how many.
+  requeueFailedDeliveries(messageId: number): number;
+  // Removes a message's deliveries, before it is routed again.
+  deleteDeliveries(messageId: number): void;
+  // Deliveries queued or being sent.
+  queueDepth(): number;
+  messageStats(since: string): MessageStats;
 
-  recordDiscard(entry: DiscardEntry): void;
-  listDiscarded(): DiscardRow[];
+  // Adds to the sender's row, then removes the oldest rows beyond maxRows.
+  recordDiscard(entry: DiscardEntry, options?: { maxRows?: number }): void;
+  // Newest first.
+  listDiscarded(filter?: DiscardFilter): DiscardRow[];
+  countDiscarded(filter?: DiscardFilter): number;
+  clearDiscarded(): number;
+  // Removes rows and hourly counts older than the given time, then rows beyond maxRows.
+  pruneDiscarded(before: string, maxRows: number): number;
+  // Discarded requests since the start of the hour that contains the given time.
+  discardedSince(since: string): number;
 
   // Sessions are stored by the SHA-256 of their id.
   createSession(idHash: string, session: Session & { userAgent?: string }): void;
   getSession(idHash: string): Session | undefined;
   deleteSession(idHash: string): void;
+  deleteSessionsExcept(idHash: string): number;
+
+  // Mutes in effect at the given time.
+  listActiveMutes(now: string): Mute[];
+  insertMute(mute: Omit<Mute, 'id' | 'createdAt'>): Mute;
+  deleteMute(id: number): boolean;
+  // Removes mutes that ended before the given time.
+  pruneMutes(now: string): number;
+  // Removes the mutes of a source or rule that is deleted.
+  deleteMutesFor(scope: Mute['scope'], target: string): void;
+
+  // Blocks still in effect at the given time.
+  listAddressBlocks(now: string): { address: string; until: string }[];
+  saveAddressBlock(address: string, until: string): void;
+  deleteAddressBlock(address: string): void;
+  pruneAddressBlocks(now: string): number;
   // Removes sessions that expired before the given time.
   pruneSessions(now: string): number;
 }

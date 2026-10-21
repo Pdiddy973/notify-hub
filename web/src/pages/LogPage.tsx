@@ -10,7 +10,7 @@ import { formatTime } from '../lib/format';
 import { keys, useSources } from '../lib/queries';
 import { useMessageStream, type StreamState } from '../lib/stream';
 
-const statuses = ['received', 'normalized', 'queued', 'delivered', 'failed', 'unrouted', 'dropped'];
+const statuses = ['received', 'normalized', 'queued', 'delivered', 'failed', 'unrouted', 'dropped', 'muted'];
 const severities = ['info', 'success', 'warning', 'error', 'debug'];
 const TEST_SOURCE_ID = 'test';
 
@@ -55,6 +55,7 @@ function Filters({ filters, onChange }: { filters: LogFilters; onChange: (next: 
             {source.name}
           </option>
         ))}
+        <option value="hub">Notify Hub (alerts)</option>
       </select>
       <select
         aria-label="Status"
@@ -121,6 +122,7 @@ function Row({
         </span>
         <span className="hidden truncate text-muted md:inline">
           {row.destinations.map((d) => `#${d}`).join(', ') || '—'}
+          {row.fallback && <span className="ml-1 text-xs text-warn">fallback</span>}
         </span>
         <span className="col-start-3 row-start-1 justify-self-end md:col-start-auto md:row-start-auto">
           <StatusBadge status={row.status} />

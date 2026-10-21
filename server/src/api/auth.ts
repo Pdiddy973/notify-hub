@@ -12,6 +12,8 @@ export interface Auth {
   currentUser(request: FastifyRequest): string | null;
   startSession(request: FastifyRequest, reply: FastifyReply): void;
   endSession(request: FastifyRequest, reply: FastifyReply): void;
+  // Ends every session except the one making the request; returns how many ended.
+  endOtherSessions(request: FastifyRequest): number;
 }
 
 export function createAuth(db: Database, now: () => Date = () => new Date()): Auth {
@@ -46,6 +48,11 @@ export function createAuth(db: Database, now: () => Date = () => new Date()): Au
       const id = request.cookies[SESSION_COOKIE];
       if (id) db.deleteSession(hashId(id));
       reply.clearCookie(SESSION_COOKIE, { path: '/' });
+    },
+
+    endOtherSessions(request) {
+      const id = request.cookies[SESSION_COOKIE];
+      return id ? db.deleteSessionsExcept(hashId(id)) : 0;
     },
   };
 }

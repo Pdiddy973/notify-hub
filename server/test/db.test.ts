@@ -25,11 +25,14 @@ describe('sqlite database', () => {
       .sort();
     expect(tables).toEqual([
       'adapters',
+      'address_blocks',
       'channels',
       'deliveries',
+      'discard_counts',
       'discarded',
       'health_events',
       'messages',
+      'mutes',
       'routes',
       'samples',
       'sessions',
@@ -54,15 +57,31 @@ describe('sqlite database', () => {
     expect(db.getSetting('missing')).toBeUndefined();
   });
 
-  it('returns routes by priority and replaces them as a set', () => {
+  it('adds rules at the end, reorders them, and replaces the rules of one source as a set', () => {
     db.saveSource({ id: 's1', name: 'S', type: 'standard', token: 't', enabled: true, config: {} });
-    db.replaceRoutes('s1', [
-      { priority: 2, channelId: 'b', enabled: true },
-      { priority: 1, channelId: 'a', enabled: false },
-    ]);
+    const any = db.insertRoute({ channelId: 'any', sourceId: null });
+    db.replaceRoutes('s1', [{ channelId: 'a' }, { channelId: 'b', enabled: false }]);
+    expect(db.listRoutes().map((r) => r.channelId)).toEqual(['any', 'a', 'b']);
     expect(db.listRoutes('s1').map((r) => r.channelId)).toEqual(['a', 'b']);
-    db.replaceRoutes('s1', [{ priority: 1, channelId: 'c', enabled: true }]);
-    expect(db.listRoutes('s1').map((r) => r.channelId)).toEqual(['c']);
+    expect(db.getRoute(any.id)).toMatchObject({
+      name: '',
+      conditions: {},
+      enabled: true,
+      continueMatching: false,
+    });
+
+    const [, a, b] = db.listRoutes();
+    db.reorderRoutes([b!.id, any.id, a!.id]);
+    expect(db.listRoutes().map((r) => [r.channelId, r.priority])).toEqual([
+      ['b', 1],
+      ['any', 2],
+      ['a', 3],
+    ]);
+
+    db.replaceRoutes('s1', [{ channelId: 'c' }]);
+    expect(db.listRoutes().map((r) => r.channelId)).toEqual(['any', 'c']);
+    expect(db.deleteSource('s1')).toBe(true);
+    expect(db.listRoutes().map((r) => r.channelId)).toEqual(['any']);
   });
 
   it('replaces the channels of one guild on sync', () => {
@@ -87,6 +106,7 @@ describe('sqlite database', () => {
       embed: { title: 't' },
       attempt: 1,
       status: 'sending',
+      fallback: false,
     });
     expect(db.requeueInterrupted()).toBe(1);
     expect(db.getDelivery(delivery.id)?.status).toBe('queued');
@@ -99,5 +119,16 @@ describe('sqlite database', () => {
     const closedDb = createSqliteDatabase(closed, createSecretBox(APP_SECRET));
     closed.sqlite.close();
     expect(closedDb.ping()).toBe(false);
+  });
+
+  it('keeps at most 10,000 saved address blocks, dropping those that end first', () => {
+    const insert = handle.sqlite.prepare('INSERT INTO address_blocks (address, until) VALUES (?, ?)');
+    handle.sqlite.transaction(() => {
+      for (let i = 0; i < 10_000; i++)
+        insert.run(`10.0.${i >> 8}.${i & 255}`, `2099-01-01T00:00:${String(i % 60).padStart(2, '0')}.000Z`);
+    })();
+    db.saveAddressBlock('192.168.1.1', '2099-12-31T00:00:00.000Z');
+    expect(db.listAddressBlocks('2026-01-01T00:00:00.000Z')).toHaveLength(10_000);
+    expect(db.listAddressBlocks('2026-01-01T00:00:00.000Z').map((b) => b.address)).toContain('192.168.1.1');
   });
 });

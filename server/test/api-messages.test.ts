@@ -106,7 +106,7 @@ describe('message log API', () => {
 
   it('lists sources and sends an adapter sample through ingest with the test button', async () => {
     expect((await get('/api/sources')).json()).toEqual([
-      { id: SOURCE_ID, name: 'Sonarr', type: 'standard', enabled: true },
+      { id: SOURCE_ID, name: 'Sonarr', type: 'standard', enabled: true, createdAt: expect.any(String) },
     ]);
     const response = await hub.app.inject({
       method: 'POST',

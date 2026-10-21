@@ -13,7 +13,7 @@ const sqlite = openSqlite(join(config.dataDir, 'hub.db'));
 const hub = createHub({
   sqlite,
   appSecret: config.appSecret,
-  bodyLimitBytes: config.bodyLimitBytes,
+  version: readVersion(),
   logger: { level: config.logLevel },
   connect: connectDiscord,
   webRoot: fileURLToPath(new URL('../../web/dist', import.meta.url)),

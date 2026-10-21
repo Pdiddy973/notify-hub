@@ -64,7 +64,8 @@ describe('ingest', () => {
     await postHook(hub, message, { sourceId: 'off', token: 'off-token' });
     await hub.app.inject({ method: 'POST', url: `/hook/${SOURCE_ID}`, payload: '{}' });
 
-    expect(hub.db.listDiscarded()).toMatchObject([
+    // Newest first, so reversed into the order sent.
+    expect(hub.db.listDiscarded().reverse()).toMatchObject([
       { sourceTried: SOURCE_ID, reason: 'wrong token', tokenHint: 'wron...(17)', method: 'POST' },
       { sourceTried: 'nope', reason: 'unknown source' },
       { sourceTried: 'off', reason: 'disabled source' },

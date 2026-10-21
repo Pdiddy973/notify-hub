@@ -12,7 +12,6 @@ export interface Config {
   tunnelPort: number;
   // Holds hub.db, backups, and adapter files.
   dataDir: string;
-  bodyLimitBytes: number;
   logLevel: LogLevel;
 }
 
@@ -20,7 +19,6 @@ export const defaultConfig: Omit<Config, 'appSecret'> = {
   port: 8080,
   tunnelPort: 8081,
   dataDir: '/var/lib/notify-hub',
-  bodyLimitBytes: 1024 * 1024,
   logLevel: 'info',
 };
 

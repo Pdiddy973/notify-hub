@@ -71,7 +71,7 @@ repeat alerts), and recovery.
 
 ## 2. Mute and snooze
 
-- [ ] Silence a source, route, or event type for a set time.
+- [x] Silence a source, route, or event type for a set time. (Built during Phase 3, 2026-10-21: a `mutes` table, mute menus on the Sources and Routing pages, a Muted page, keep-errors, and expiry.)
 
 **Scope**
 

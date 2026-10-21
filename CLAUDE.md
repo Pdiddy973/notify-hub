@@ -60,7 +60,7 @@ The hub holds the bot token, source tokens, and the admin login, so every change
 **Rules for every change**
 
 - Admin API routes need a session; a route marked `config: { public: true }` needs a stated reason. Validate every body and query with a shared Zod schema through `parseWith`.
-- Secrets (bot token, source tokens, API keys, GitHub and tunnel tokens) are stored through the `SecretBox`, never returned by the API after saving, never logged, and left out of exports unless encrypted. Compare them with `tokensMatch`.
+- Secrets (bot token, source tokens, API keys, GitHub and tunnel tokens) are stored through the `SecretBox`, never returned by the API after saving, never logged, and left out of exports unless encrypted. Compare them with `tokensMatch`. The one exception: `POST /api/sources/:id/url` returns a source's webhook URL, token included, when the admin asks for it on the source page; it sends `Cache-Control: no-store`, and no other response may contain a source token.
 - Never log request bodies, headers, or full webhook URLs; logged URLs go through `maskHookToken`. Read every new log line and error message for secrets.
 - Ingest checks the token before reading the body; a rejected request gets the shared 404 and only a discarded-log row. Every stored payload goes through the redactor, and a new body format (such as multipart) needs redaction before it is stored.
 - Changes from the browser rely on SameSite=Strict cookies plus the same-origin check in the admin API; do not loosen either, and do not add CORS headers.
@@ -71,8 +71,6 @@ The hub holds the bot token, source tokens, and the admin login, so every change
 
 **Open items, by phase**
 
-- Phase 3: give the discarded log its retention, row cap, and address blocking (it grows by sender, source, and reason today). Remove `npm run seed`, which shows the bot token on screen and accepts it as a command-line argument. Rotated source tokens stay valid for 10 minutes only.
-- Phase 3 settings: changing the admin password asks for the current one and ends every other session.
 - Phase 4: adapters run in worker threads with time limits and no access to the database or secrets; network use only with an approved `fetch` permission.
 - Phase 5: redact multipart bodies (Plex) before storage.
 - Phase 6 tunnel: trust proxy headers only from 127.0.0.1 so `request.ip` and `request.protocol` are right; key the login limiter on the real client address; mark cookies Secure (consider the `__Host-` prefix) and send HSTS over HTTPS; verify the Cloudflare Access token on every tunneled request; make the redaction list configurable; exports leave secrets out.

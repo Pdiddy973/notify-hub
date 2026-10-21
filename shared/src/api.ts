@@ -46,6 +46,8 @@ export const messageStatusSchema = z.enum([
   'failed',
   'unrouted',
   'dropped',
+  // Stored and logged, but a mute kept it from being posted.
+  'muted',
 ]);
 export type MessageStatus = z.infer<typeof messageStatusSchema>;
 
@@ -62,6 +64,8 @@ export const messageQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 export type MessageQuery = z.input<typeof messageQuerySchema>;
+
+export const messageParamsSchema = z.object({ id: z.coerce.number().int().positive() });
 
 export interface ApiError {
   error: string;
@@ -96,17 +100,9 @@ export interface ChannelInfo {
   type: string;
 }
 
-export interface SourceSummary {
-  id: string;
-  name: string;
-  type: string;
-  enabled: boolean;
-}
-
 export interface SetupFinishResult {
+  // The test source; POST /api/sources/:id/url gives its webhook URL.
   sourceId: string;
-  // Path of the test source's webhook, including its token.
-  hookPath: string;
 }
 
 export interface MessageSummary {
@@ -121,6 +117,8 @@ export interface MessageSummary {
   title?: string;
   // Channel names of the deliveries.
   destinations: string[];
+  // True when a delivery went to the fallback channel because no rule matched.
+  fallback: boolean;
   hasError: boolean;
 }
 
@@ -129,6 +127,12 @@ export interface DeliveryInfo {
   channelId: string;
   channelName?: string;
   embed: Embed;
+  // The rule that chose the channel, when one did.
+  routeId?: number;
+  // Sent to the fallback channel because no rule matched.
+  fallback: boolean;
+  // Mentions sent as the message text next to the embed.
+  content?: string;
   attempt: number;
   status: DeliveryStatus;
   error?: string;
@@ -143,6 +147,12 @@ export interface MessageDetail extends MessageSummary {
   normalized?: StandardMessage[];
   error?: string;
   deliveries: DeliveryInfo[];
+}
+
+// What a resend did: failed deliveries queued again, or the message routed again.
+export interface ResendResult {
+  requeued: number;
+  rerouted: boolean;
 }
 
 export interface MessagePage {
