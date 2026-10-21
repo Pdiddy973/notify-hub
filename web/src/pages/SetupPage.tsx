@@ -1,4 +1,10 @@
-import type { DiscordStatus, DiscordVerifyResult, SessionInfo, SetupFinishResult } from '@notify-hub/shared';
+import type {
+  DiscordStatus,
+  DiscordVerifyResult,
+  SessionInfo,
+  SetupFinishResult,
+  SourceUrl,
+} from '@notify-hub/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, Navigate } from 'react-router';
@@ -116,7 +122,8 @@ function AccountStep() {
   );
 }
 
-function DiscordStep({ onSaved }: { onSaved: () => void }) {
+// Also used on the Settings page to change the bot token or server.
+export function DiscordStep({ onSaved }: { onSaved: () => void }) {
   const queryClient = useQueryClient();
   const [botToken, setBotToken] = useState('');
   const [guildId, setGuildId] = useState('');
@@ -222,8 +229,15 @@ function ChannelStep({ onBack }: { onBack: () => void }) {
   const channels = useChannels({ pollUntilFound: true });
   const [channelId, setChannelId] = useState('');
   const finish = useMutation({
-    mutationFn: (id: string) =>
-      api<SetupFinishResult>('/setup/finish', { method: 'POST', body: { channelId: id } }),
+    // Keeps the token-bearing response out of the mutation cache.
+    gcTime: 0,
+    mutationFn: async (id: string) => {
+      const { sourceId } = await api<SetupFinishResult>('/setup/finish', {
+        method: 'POST',
+        body: { channelId: id },
+      });
+      return api<SourceUrl>(`/sources/${sourceId}/url`, { method: 'POST' });
+    },
     onSuccess: () =>
       queryClient.setQueryData<SessionInfo>(keys.session, (info) => info && { ...info, setupComplete: true }),
   });

@@ -1,5 +1,5 @@
-import type { MessageDetail as Detail } from '@notify-hub/shared';
-import { useQuery } from '@tanstack/react-query';
+import type { MessageDetail as Detail, ResendResult } from '@notify-hub/shared';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api, errorMessage } from '../lib/api';
 import { formatFull, prettyBody } from '../lib/format';
@@ -21,6 +21,18 @@ function Code({ children }: { children: string }) {
 export function MessageDetail({ id, onClose }: { id: number; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('Embed');
   const query = useQuery({ queryKey: keys.message(id), queryFn: () => api<Detail>(`/messages/${id}`) });
+  const queryClient = useQueryClient();
+  const resend = useMutation({
+    mutationFn: () => api<ResendResult>(`/messages/${id}/resend`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.message(id) }),
+  });
+  const status = query.data?.status;
+  const hasFailed = query.data?.deliveries.some((delivery) => delivery.status === 'failed') ?? false;
+  // Failed deliveries are queued again; unsent messages are routed again with the current rules.
+  const canResend =
+    hasFailed ||
+    ((status === 'unrouted' || status === 'muted' || status === 'dropped') &&
+      Boolean(query.data?.normalized?.length));
 
   return (
     <section className="flex h-full min-h-0 flex-col" aria-label={`Message ${id}`}>
@@ -81,6 +93,29 @@ export function MessageDetail({ id, onClose }: { id: number; onClose: () => void
               </ErrorBox>
             ))}
           {query.data.status === 'unrouted' && <ErrorBox>No route matched, so nothing was sent.</ErrorBox>}
+          {query.data.status === 'muted' && (
+            <p className="text-sm text-warn">A mute kept this message from being posted.</p>
+          )}
+          {(canResend || resend.data || resend.error) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {canResend && (
+                <>
+                  <Button variant="secondary" onClick={() => resend.mutate()} disabled={resend.isPending}>
+                    {hasFailed ? 'Resend failed deliveries' : 'Route again'}
+                  </Button>
+                  {!hasFailed && (
+                    <span className="text-xs text-muted">Uses the current rules and mutes.</span>
+                  )}
+                </>
+              )}
+              {resend.data && (
+                <span className="text-xs text-ok">
+                  {resend.data.rerouted ? 'Routed again.' : `Queued ${resend.data.requeued} again.`}
+                </span>
+              )}
+              {resend.error && <span className="text-xs text-bad">{errorMessage(resend.error)}</span>}
+            </div>
+          )}
 
           <div className="flex gap-1 border-b border-line" role="tablist">
             {tabs.map((name) => (
@@ -104,6 +139,7 @@ export function MessageDetail({ id, onClose }: { id: number; onClose: () => void
                 {query.data.deliveries.map((delivery) => (
                   <div key={delivery.id} className="space-y-1">
                     <div className="text-xs text-muted">#{delivery.channelName ?? delivery.channelId}</div>
+                    {delivery.content && <div className="text-sm text-ink">{delivery.content}</div>}
                     <EmbedPreview embed={delivery.embed} />
                   </div>
                 ))}
@@ -148,7 +184,13 @@ export function MessageDetail({ id, onClose }: { id: number; onClose: () => void
                 <tbody>
                   {query.data.deliveries.map((delivery) => (
                     <tr key={delivery.id} className="border-t border-line align-top">
-                      <td className="py-1.5 pr-3">#{delivery.channelName ?? delivery.channelId}</td>
+                      <td className="py-1.5 pr-3">
+                        #{delivery.channelName ?? delivery.channelId}
+                        {delivery.fallback && (
+                          <div className="text-xs text-warn">fallback: no rule matched</div>
+                        )}
+                        {delivery.content && <div className="text-xs text-muted">{delivery.content}</div>}
+                      </td>
                       <td className="py-1.5 pr-3">
                         {delivery.status}
                         {delivery.error && <div className="text-xs text-bad">{delivery.error}</div>}

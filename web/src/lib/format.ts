@@ -33,3 +33,14 @@ export function prettyBody(raw: string): string {
 export function colorHex(color: number | undefined): string {
   return color === undefined ? '#1e1f22' : `#${color.toString(16).padStart(6, '0')}`;
 }
+
+// Turns a name into a source id suggestion, such as "Sonarr 4K" into "sonarr-4k".
+export function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48)
+    .replace(/-+$/, '');
+}
