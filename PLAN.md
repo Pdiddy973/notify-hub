@@ -747,7 +747,7 @@ git push origin v0.1.0
 
 **Phase 4: First adapters**
 
-- [ ] Adapter file format, the commented \_template.js, loader with hot reload, validation, and sample runner; built-in adapters use it too
+- [x] Adapter file format, the commented \_template.js, loader with hot reload, validation, and sample runner; built-in adapters use it too
 
 * [ ] Capture real payloads from Sonarr, Radarr, and Prowlarr and save as fixtures
 * [ ] Adapters with tests for grab, import, upgrade, health, and test events

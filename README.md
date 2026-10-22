@@ -229,8 +229,9 @@ An adapter turns one service's raw request into standard messages. Each adapter 
 
 - Takes a request body (JSON, form, or text) and returns zero or more standard messages.
 - Declares the fields the UI asks for when you add a source of that type.
-- Ships sample payloads that are run as tests and by the UI's test button.
-- Loads on start and reloads when the file changes; the last working version keeps running if a reload fails.
+- Ships sample payloads that are checked on every load, run by the Run samples button, and sent by the source's test button.
+- Your files live in `adapters/` inside the data folder (`/var/lib/notify-hub/adapters`). The hub loads them on start and reloads a file within a second of saving it; if a change breaks it, the last working version keeps running.
+- The Adapters page lists every adapter with its status (Loaded, Samples failing, or Error), the error with its file and line, and the network permissions it asks for.
 
 </details>
 
@@ -254,7 +255,11 @@ An adapter turns one service's raw request into standard messages. Each adapter 
 <details>
 <summary>Write your own adapter</summary>
 
-Copy `adapters/_template.js` into `/var/lib/notify-hub/adapters/` (or use New adapter in the UI, or `npm run new-adapter <name>`), then change `id`, `name`, and `normalize`. Files starting with an underscore are never loaded.
+The hub copies a commented `_template.js` into the adapters folder on first start. Copy it to a new name such as `my-service.js`, then change `id`, `name`, `normalize`, and `samples`. A New adapter button and `npm run new-adapter <name>` are planned.
+
+- Files starting with an underscore are never loaded as adapters, but adapters can import them as shared helpers.
+- An adapter can import only files inside the adapters folder: no npm packages and no `node:` modules.
+- Files can be JavaScript (`.js`, `.mjs`) or TypeScript (`.ts`).
 
 ```js
 // adapters/my-service.js
@@ -271,7 +276,7 @@ export default {
   style: { icon: 'https://example.com/icon.png', colors: { error: '#e74c3c' } },
   // body format: json, form, or text
   parse: 'json',
-  // turn one request into standard messages
+  // turn one request into standard messages; may be async
   normalize({ body, headers, config }) {
     return [{
       event: body.event,
@@ -288,10 +293,15 @@ export default {
 };
 ```
 
-For simple services, a declarative `map` can replace `normalize`:
+For simple services, a declarative `map` can replace `normalize`. `{{body.x}}`, `{{headers.x}}`, and `{{config.x}}` are filled from the request. An optional part or field whose placeholders are all empty is left out, so `'{{body.ping}} ms'` never shows a bare ` ms`:
 
 ```js
-map: { title: '{{body.event}} on {{body.host}}', severity: { from: 'body.status', values: { up: 'success', down: 'error' } } }
+map: {
+  event: '{{body.event}}',
+  severity: { from: 'body.status', values: { up: 'success', down: 'error' }, default: 'info' },
+  title: '{{body.event}} on {{body.host}}',
+  fields: [{ name: 'Ping', value: '{{body.ping}} ms', inline: true }],
+}
 ```
 
 </details>
@@ -303,24 +313,28 @@ map: { title: '{{body.event}} on {{body.host}}', severity: { from: 'body.status'
 | --- | --- | --- |
 | `id`, `name` | Yes | Identifier and display name; a file with the same `id` as a built-in overrides it |
 | `parse` | Yes | `json`, `form`, or `text` |
-| `normalize` or `map` | Yes | Returns an array of standard messages; an empty array ignores the event on purpose |
-| `samples` | Yes | Example payloads for tests and the test button |
-| `version` | No | Adapter version |
-| `config` | No | Fields the UI asks for per source (URLs, options, secrets); values are stored in the database |
-| `style` | No | Default icon and colors |
+| `normalize` or `map` | Yes | `normalize({ body, headers, config, fetch })` returns an array of standard messages (or a promise of one); an empty array ignores the event on purpose |
+| `samples` | Yes | At least one `{ name, body, headers? }`; checked on load, the first one is sent by the test button |
+| `version` | No | Your version number, shown on the Adapters page |
+| `config` | No | Fields per source, each `{ type: 'string' \| 'number' \| 'boolean', label, default?, help? }`; `normalize` receives the defaults overridden by the source's values |
+| `style` | No | Default `icon` (http or https URL) and `colors` per severity (`#rrggbb`); applied with the planned style editor |
 | `help` | No | Setup text on the source page |
-| `permissions` | No | `['fetch']` if the adapter needs network access; you approve it in the UI |
+| `permissions` | No | `['fetch:api.example.com']`, one entry per host the adapter may call; each is approved on the Adapters page |
 
-Adapters never handle tokens: the hub checks them first.
+Unknown fields are refused, so a typo such as `normalise` shows as an error instead of being ignored. Adapters never handle tokens: the hub checks them first.
 
 </details>
 
 <details>
 <summary>Testing and safety</summary>
 
-- The hub runs every `samples` entry through `normalize` and shows the resulting embed; a button saves the last received payload as a new sample.
-- Syntax errors, bad shapes, and thrown errors show on the Adapters page with the line number.
-- Adapters run in a worker thread with a time limit and receive only the request data, never the database or secrets. This is not a hard sandbox, so only use files you wrote or trust.
+- Every load runs all `samples` and checks that each result is a standard message. Run samples on the Adapters page shows the embeds they produce. A button that saves the last received payload as a new sample is planned.
+- Syntax errors, bad shapes, and thrown errors show on the Adapters page with the file, line, and column, such as `boom (my-service.js:12:11)`. The same text is stored with a message whose adapter failed.
+- Adapters run in one worker thread, one request at a time, and receive only the request data, never the database or secrets.
+- **Limits:** 5 seconds per call and 64 MB of memory. An adapter that runs over is stopped, its message gets the plain fallback embed, and the worker restarts with every adapter loaded again.
+- **What an adapter can reach:** each adapter runs in its own JavaScript context that holds only the language built-ins (such as `JSON`, `Math`, `Date`, `Intl`, and `Promise`). There is no `process`, `require`, `import()`, timer, `URL` class, or file and network access, and `console` output is discarded. Only text passes between the adapter and the hub, so changing a built-in affects that one adapter only. The worker itself starts with an empty environment, so `APP_SECRET` is not in it either.
+- **Network:** `fetch` is missing until you approve a `fetch:<host>` permission on the Adapters page. The `fetch(url, { method, headers, body })` an adapter receives reaches only its approved hosts, over http or https. It refuses redirects, reads at most 1 MB, and returns `ok`, `status`, `headers.get()`, `text()`, and `json()`.
+- This is not a hard sandbox, so only put files you wrote or trust in the adapters folder.
 - Rule for every adapter: capture a real payload first, save it as a fixture, and write the test before the mapping.
 
 </details>
@@ -478,11 +492,11 @@ The UI is the control plane: setup, daily monitoring, and every setting live her
 | First-run setup | Create the admin account, paste the bot token, pick the server, sync channels |
 | Dashboard | Messages, failures, unrouted messages, and discarded requests today; queue depth, bot status, and messages and last message per source |
 | Live log | Streaming table with filters for source, status, severity, and text |
-| Message detail | Raw payload, normalized message, embed preview, delivery attempts and errors, resend |
+| Message detail | Raw payload with a Copy body button, normalized message, embed preview, delivery attempts and errors, resend |
 | Sources | Add a source, copy its URL, setup help, test send, enable, rotate token, delete |
 | Routing | Rules, priority, conditions, channel, fallback channel, rule tester |
 | Formatting | Per-source colors, icon, title template, visible fields, live preview |
-| Adapters | Loaded files, status and errors, run samples, New adapter, approve permissions |
+| Adapters | Loaded files, status and errors with line numbers, run samples, approve network permissions; New adapter is planned |
 | Updates | Running version, check now, release notes, apply, roll back, settings |
 | Muted | Active mutes of sources, rules, and events, with Unmute and a form for new mutes |
 | Discarded | Requests rejected for a wrong token or unknown source, with filters, blocked addresses, and settings |
@@ -706,7 +720,7 @@ Responses: 202 stored, 404 for a wrong token or unknown source (the same respons
 | Messages | `GET /api/messages`, `GET /api/messages/:id`, `POST /api/messages/:id/resend` |
 | Mutes | `GET/POST /api/mutes`, `DELETE /api/mutes/:id` |
 | Live feed | `GET /api/stream` (server-sent events) |
-| Adapters | `GET /api/adapters`, `POST /api/adapters`, `POST /api/adapters/:id/run-samples` |
+| Adapters | `GET /api/adapters`, `POST /api/adapters/:id/run-samples`, `PUT /api/adapters/:id/permissions`; `POST /api/adapters` (New adapter) is planned |
 | Updates | `GET /api/updates`, `POST /api/updates/check`, `POST /api/updates/apply`, `POST /api/updates/rollback`, `PUT /api/updates/settings` |
 | Health | `GET /api/health`, `POST /api/health/run`, `PUT /api/health/settings` |
 | Discarded | `GET /api/discarded`, `DELETE /api/discarded`, `POST /api/discarded/unblock`, `GET/PUT /api/discarded/settings` |
