@@ -1,6 +1,6 @@
 import { adapterMessageSchema, type MessageStatus, type StandardMessage } from '@notify-hub/shared';
 import { z } from 'zod';
-import { parseBody, type AdapterRegistry } from '../adapters/index.js';
+import { AdapterHostClosed, configWithDefaults, parseBody, type AdapterRegistry } from '../adapters/index.js';
 import type { Database, Source, StoredMessage } from '../db/index.js';
 import type { Queue } from '../queue/index.js';
 import { renderEmbed } from './render.js';
@@ -37,7 +37,8 @@ function fallbackMessage(source: Source, stored: StoredMessage, error: string): 
 
 export interface Pipeline {
   // Normalizes a stored message, routes it, and queues one delivery per routed result.
-  process(messageId: number): void;
+  // Rejects only when the adapter worker shuts down; the message then stays received.
+  process(messageId: number): Promise<void>;
   // Routes an already normalized message again, replacing its deliveries; false when it
   // has nothing to route.
   reroute(messageId: number): boolean;
@@ -52,7 +53,8 @@ export interface PipelineDeps {
 
 export function createPipeline({ db, adapters, queue, settings }: PipelineDeps): Pipeline {
   return {
-    process(messageId) {
+    async process(messageId) {
+      await adapters.ready;
       const stored = db.getMessage(messageId);
       if (!stored) return;
       const source = db.getSource(stored.sourceId);
@@ -66,11 +68,16 @@ export function createPipeline({ db, adapters, queue, settings }: PipelineDeps):
         const adapter = adapters.get(source.type);
         if (!adapter) throw new Error(`No adapter named ${source.type}`);
         const body = parseBody(stored.rawPayload, adapter.parse);
-        messages = adapter
-          .normalize({ body, headers: stored.headers, config: source.config })
+        const outputs = await adapters.normalize(adapter.id, {
+          body,
+          headers: stored.headers,
+          config: configWithDefaults(adapter.config, source.config),
+        });
+        messages = outputs
           .map((output) => adapterMessageSchema.parse(output))
           .map((output) => ({ ...output, source: source.id, timestamp: stored.receivedAt }));
       } catch (error) {
+        if (error instanceof AdapterHostClosed) throw error;
         const text = describeError(error);
         db.updateMessage(messageId, { error: text });
         messages = [fallbackMessage(source, stored, text)];

@@ -26,6 +26,7 @@ import type { AddressBlocker, Ingest } from '../ingest/index.js';
 import type { Queue } from '../queue/index.js';
 import { generateSetupCode, generateToken, setupCodesMatch } from '../security/index.js';
 import { hashPassword, verifyPassword } from '../security/password.js';
+import { registerAdapterRoutes } from './adapters.js';
 import { createAuth, createLoginLimiter } from './auth.js';
 import { registerDiscardedRoutes } from './discarded.js';
 import { ApiProblem, fieldProblem, parseWith } from './errors.js';
@@ -240,6 +241,7 @@ export function registerAdminApi(app: FastifyInstance, deps: AdminApiDeps) {
       api.get('/channels', async (): Promise<ChannelInfo[]> => listGuildChannels());
 
       registerSourceRoutes(api, { db, ingest, adapters });
+      registerAdapterRoutes(api, { adapters });
       registerRoutingRoutes(api, { db, settings });
       registerMuteRoutes(api, { db });
       registerDiscardedRoutes(api, { db, settings, blocker });

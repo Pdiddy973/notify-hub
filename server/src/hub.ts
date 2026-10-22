@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyServerOptions } from 'fastify';
-import { builtInAdapters, createRegistry } from './adapters/index.js';
+import { AdapterHostClosed, createAdapterLoader, type AdapterLoaderOptions } from './adapters/index.js';
 import { createBotApi, registerAdminApi, type DiscordControl } from './api/index.js';
 import { createHubAlerts, spikeAlert } from './core/alerts.js';
 import { createPipeline, createSettingsStore } from './core/index.js';
@@ -39,11 +39,17 @@ export interface HubDeps {
   setupCode?: string;
   // How often old discarded entries are removed.
   pruneIntervalMs?: number;
+  // Folder of your own adapter files; without it only built-in adapters load.
+  adaptersDir?: string;
+  // Worker time and memory limits.
+  adapterHost?: AdapterLoaderOptions['host'];
 }
 
 export interface Hub {
   app: FastifyInstance;
   db: Database;
+  // Settles once the adapters have loaded.
+  ready: Promise<void>;
   close(): Promise<void>;
 }
 
@@ -53,7 +59,16 @@ export function createHub(deps: HubDeps): Hub {
   const events = createMessageEvents();
   const db = observeDatabase(createSqliteDatabase(sqlite, createSecretBox(appSecret)), events);
   const settings = createSettingsStore(db);
-  const adapters = createRegistry(builtInAdapters);
+  const adapters = createAdapterLoader({
+    db,
+    ...(deps.adaptersDir ? { userDir: deps.adaptersDir } : {}),
+    ...(deps.adapterHost ? { host: deps.adapterHost } : {}),
+    // Log lines come after start, once the server and its logger exist.
+    log: {
+      info: (details, message) => app.log.info(details, message),
+      warn: (details, message) => app.log.warn(details, message),
+    },
+  });
   // Read once; a changed setting applies after a restart.
   const bodyLimitBytes = deps.bodyLimitBytes ?? settings.hub().bodyLimitKb * 1024;
   let worker: Worker | undefined;
@@ -84,15 +99,14 @@ export function createHub(deps: HubDeps): Hub {
   const processMessage = (messageId: number) => {
     // Left as received while closing; processed on the next start.
     if (closing) return;
-    try {
-      pipeline.process(messageId);
-    } catch (err) {
+    pipeline.process(messageId).catch((err: unknown) => {
+      if (closing || err instanceof AdapterHostClosed) return;
       app.log.error({ err, messageId }, 'Message processing failed');
       db.updateMessage(messageId, {
         status: 'failed',
         error: err instanceof Error ? err.message : String(err),
       });
-    }
+    });
   };
   const ingest = createIngest({
     db,
@@ -208,11 +222,13 @@ export function createHub(deps: HubDeps): Hub {
   return {
     app,
     db,
+    ready: adapters.ready,
     async close() {
       closing = true;
       clearInterval(pruneTimer);
       await app.close();
       await stopDiscord();
+      await adapters.close();
     },
   };
 }

@@ -632,5 +632,37 @@ export function createSqliteDatabase({ orm }: SqliteHandle, secrets: SecretBox):
     pruneSessions(now) {
       return orm.delete(schema.sessions).where(lt(schema.sessions.expiresAt, now)).run().changes;
     },
+
+    adapterApprovals() {
+      const rows = orm
+        .select({ id: schema.adapters.id, approved: schema.adapters.approvedPermissions })
+        .from(schema.adapters)
+        .all();
+      return new Map(rows.map((row) => [row.id, row.approved]));
+    },
+
+    saveAdapterState({ id, filePath, version, loadStatus, lastError }) {
+      const { adapters } = schema;
+      const values = {
+        filePath,
+        version: version ?? null,
+        loadStatus,
+        lastError: lastError ?? null,
+        updatedAt: isoNow(),
+      };
+      orm
+        .insert(adapters)
+        .values({ id, ...values })
+        .onConflictDoUpdate({ target: adapters.id, set: values })
+        .run();
+    },
+
+    setAdapterApprovals(id, approved) {
+      orm
+        .update(schema.adapters)
+        .set({ approvedPermissions: approved, updatedAt: isoNow() })
+        .where(eq(schema.adapters.id, id))
+        .run();
+    },
   };
 }

@@ -5,3 +5,4 @@ export * from './routing.js';
 export * from './discarded.js';
 export * from './settings.js';
 export * from './mutes.js';
+export * from './adapters.js';
