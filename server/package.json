@@ -11,6 +11,7 @@
     "better-sqlite3": "^13.0.3",
     "discord.js": "^14.27.0",
     "drizzle-orm": "^0.45.4",
+    "esbuild": "^0.28.2",
     "fastify": "^5.12.5",
     "pino": "^10.4.0",
     "zod": "^4.6.5"
