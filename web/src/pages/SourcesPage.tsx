@@ -39,8 +39,10 @@ function AddSourceForm({ onCreated, onCancel }: { onCreated: (id: string) => voi
   const [name, setName] = useState('');
   const [id, setId] = useState('');
   const [idEdited, setIdEdited] = useState(false);
-  const chosenType = type || adapters.data?.[0]?.id || '';
-  const chosen = adapters.data?.find((adapter) => adapter.id === chosenType);
+  // Built-in adapters that a file overrides are not offered.
+  const types = adapters.data?.adapters.filter((adapter) => adapter.active) ?? [];
+  const chosenType = type || types[0]?.id || '';
+  const chosen = types.find((adapter) => adapter.id === chosenType);
 
   const create = useMutation({
     mutationFn: (body: CreateSourceRequest) => api<SourceDetail>('/sources', { method: 'POST', body }),
@@ -72,7 +74,7 @@ function AddSourceForm({ onCreated, onCancel }: { onCreated: (id: string) => voi
           onChange={(e) => setType(e.target.value)}
           error={fields.type}
         >
-          {adapters.data?.map((adapter) => (
+          {types.map((adapter) => (
             <option key={adapter.id} value={adapter.id}>
               {adapter.name}
             </option>
@@ -97,7 +99,9 @@ function AddSourceForm({ onCreated, onCancel }: { onCreated: (id: string) => voi
           hint="Part of the webhook URL; it cannot be changed later."
           spellCheck={false}
         />
-        {chosen?.help && <p className="text-xs text-muted md:col-span-3">{chosen.help}</p>}
+        {chosen?.help && (
+          <p className="text-xs whitespace-pre-wrap text-muted md:col-span-3">{chosen.help}</p>
+        )}
         <div className="flex gap-2 md:col-span-3">
           <Button type="submit" disabled={create.isPending || !name || !sourceId || !chosenType}>
             {create.isPending ? 'Adding…' : 'Add source'}
@@ -317,6 +321,14 @@ function SourcePanel({ id, onClose, onDeleted }: { id: string; onClose: () => vo
       </div>
 
       {actionError && <ErrorBox>{errorMessage(actionError)}</ErrorBox>}
+      {data.adapterProblem && (
+        <Notice>
+          {data.adapterProblem}{' '}
+          <Link to="/adapters" className="text-accent hover:underline">
+            Open Adapters
+          </Link>
+        </Notice>
+      )}
 
       <form
         className="flex items-end gap-2"

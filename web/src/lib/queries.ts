@@ -1,5 +1,5 @@
 import type {
-  AdapterInfo,
+  AdapterList,
   ChannelInfo,
   DashboardInfo,
   DiscardedPage,
@@ -58,8 +58,13 @@ export function useChannels({ pollUntilFound = false }: { pollUntilFound?: boole
   });
 }
 
-export function useAdapters() {
-  return useQuery({ queryKey: keys.adapters, queryFn: () => api<AdapterInfo[]>('/adapters') });
+// With live, checks every 3 seconds so edits to adapter files show up without a reload.
+export function useAdapters({ live = false }: { live?: boolean } = {}) {
+  return useQuery({
+    queryKey: keys.adapters,
+    queryFn: () => api<AdapterList>('/adapters'),
+    refetchInterval: live ? 3000 : false,
+  });
 }
 
 export function useSources() {
