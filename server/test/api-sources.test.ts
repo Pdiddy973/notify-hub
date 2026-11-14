@@ -33,6 +33,9 @@ describe('sources API', () => {
   it('lists adapters with their setup help', async () => {
     const { adapters } = (await api('GET', '/api/adapters')).json();
     expect(adapters).toEqual([
+      expect.objectContaining({ id: 'prowlarr', name: 'Prowlarr', help: expect.stringContaining('Webhook') }),
+      expect.objectContaining({ id: 'radarr', name: 'Radarr', help: expect.stringContaining('Webhook') }),
+      expect.objectContaining({ id: 'sonarr', name: 'Sonarr', help: expect.stringContaining('Webhook') }),
       expect.objectContaining({
         id: 'standard',
         name: 'Standard message',

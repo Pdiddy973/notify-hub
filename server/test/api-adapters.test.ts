@@ -31,7 +31,14 @@ describe('adapters API', () => {
   it('lists the folder, each adapter with its status, and files that never loaded', async () => {
     const { folder, adapters, failed } = await list();
     expect(folder).toBe(dir);
-    expect(adapters.map((adapter) => adapter.id).sort()).toEqual(['boom', 'demo', 'standard']);
+    expect(adapters.map((adapter) => adapter.id).sort()).toEqual([
+      'boom',
+      'demo',
+      'prowlarr',
+      'radarr',
+      'sonarr',
+      'standard',
+    ]);
     expect(adapters.find((adapter) => adapter.id === 'demo')).toMatchObject({
       origin: 'file',
       file: 'demo.js',

@@ -248,6 +248,9 @@ describe('adapter loader', () => {
       .all();
     expect(rows).toEqual([
       { id: 'boom', status: 'samples-failing', error: expect.stringContaining('boom') },
+      { id: 'prowlarr', status: 'ok', error: null },
+      { id: 'radarr', status: 'ok', error: null },
+      { id: 'sonarr', status: 'ok', error: null },
       { id: 'standard', status: 'ok', error: null },
     ]);
   });
