@@ -166,6 +166,8 @@ describe('admin routes added in Phase 3', () => {
   it('answer 401 without a session', async () => {
     const routes = [
       ['GET', '/api/adapters'],
+      ['POST', '/api/adapters/standard/run-samples'],
+      ['PUT', '/api/adapters/standard/permissions'],
       ['GET', `/api/sources/${SOURCE_ID}`],
       ['POST', '/api/sources'],
       ['PATCH', `/api/sources/${SOURCE_ID}`],

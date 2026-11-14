@@ -31,9 +31,16 @@ describe('sources API', () => {
   const tokenOf = (id: string) => hub.db.getSource(id)!.token;
 
   it('lists adapters with their setup help', async () => {
-    const adapters = (await api('GET', '/api/adapters')).json();
+    const { adapters } = (await api('GET', '/api/adapters')).json();
     expect(adapters).toEqual([
-      { id: 'standard', name: 'Standard message', help: expect.stringContaining('JSON') },
+      expect.objectContaining({ id: 'prowlarr', name: 'Prowlarr', help: expect.stringContaining('Webhook') }),
+      expect.objectContaining({ id: 'radarr', name: 'Radarr', help: expect.stringContaining('Webhook') }),
+      expect.objectContaining({ id: 'sonarr', name: 'Sonarr', help: expect.stringContaining('Webhook') }),
+      expect.objectContaining({
+        id: 'standard',
+        name: 'Standard message',
+        help: expect.stringContaining('JSON'),
+      }),
     ]);
   });
 

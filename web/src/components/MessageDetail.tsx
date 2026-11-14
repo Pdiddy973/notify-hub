@@ -2,6 +2,7 @@ import type { MessageDetail as Detail, ResendResult } from '@notify-hub/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api, errorMessage } from '../lib/api';
+import { copyText } from '../lib/clipboard';
 import { formatFull, prettyBody } from '../lib/format';
 import { keys } from '../lib/queries';
 import { EmbedPreview } from './EmbedPreview';
@@ -15,6 +16,23 @@ function Code({ children }: { children: string }) {
     <pre className="overflow-x-auto rounded bg-page p-3 text-xs leading-relaxed whitespace-pre-wrap text-ink">
       {children}
     </pre>
+  );
+}
+
+// Copies text and says for two seconds whether it worked.
+function CopyButton({ text, label }: { text: string; label: string }) {
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  return (
+    <Button
+      variant="ghost"
+      className="px-2 py-1 text-xs"
+      onClick={async () => {
+        setState((await copyText(text)) ? 'copied' : 'failed');
+        setTimeout(() => setState('idle'), 2000);
+      }}
+    >
+      {state === 'copied' ? 'Copied' : state === 'failed' ? 'Copy failed' : label}
+    </Button>
   );
 }
 
@@ -163,8 +181,11 @@ export function MessageDetail({ id, onClose }: { id: number; onClose: () => void
                   .map(([name, value]) => `${name}: ${value}`)
                   .join('\n')}
               </Code>
-              <div className="text-xs text-muted">
-                Body ({query.data.rawContentType || 'no content type'})
+              <div className="flex items-center gap-2 text-xs text-muted">
+                <span className="flex-1">Body ({query.data.rawContentType || 'no content type'})</span>
+                {query.data.rawPayload && (
+                  <CopyButton text={prettyBody(query.data.rawPayload)} label="Copy body" />
+                )}
               </div>
               <Code>{prettyBody(query.data.rawPayload) || '(empty)'}</Code>
             </div>

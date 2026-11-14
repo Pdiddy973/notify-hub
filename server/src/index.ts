@@ -17,6 +17,7 @@ const hub = createHub({
   logger: { level: config.logLevel },
   connect: connectDiscord,
   webRoot: fileURLToPath(new URL('../../web/dist', import.meta.url)),
+  adaptersDir: join(config.dataDir, 'adapters'),
 });
 
 await hub.app.listen({ host: '0.0.0.0', port: config.port });

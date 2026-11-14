@@ -43,15 +43,11 @@ export interface SourceDetail extends SourceSummary {
   adapterName?: string;
   // Setup instructions from the adapter.
   help?: string;
+  // Set when the adapter is missing or its file has a problem.
+  adapterProblem?: string;
 }
 
 // The only response that contains a source token.
 export interface SourceUrl {
   hookPath: string;
-}
-
-export interface AdapterInfo {
-  id: string;
-  name: string;
-  help?: string;
 }

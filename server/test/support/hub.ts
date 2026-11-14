@@ -7,7 +7,7 @@ import {
   type DiscordRest,
   type DiscordSender,
 } from '../../src/discord/index.js';
-import { createHub } from '../../src/hub.js';
+import { createHub, type HubDeps } from '../../src/hub.js';
 import { createSecretBox } from '../../src/security/index.js';
 
 export const APP_SECRET = 'test-secret-'.repeat(4);
@@ -31,6 +31,8 @@ export interface TestHubOptions {
   keepAliveMs?: number;
   // Records every log line at trace level in `logs`.
   captureLogs?: boolean;
+  adaptersDir?: string;
+  adapterHost?: HubDeps['adapterHost'];
 }
 
 // A full hub on an in-memory database, with one source and route and a fake Discord connection.
@@ -41,6 +43,8 @@ export function createTestHub({
   webRoot,
   keepAliveMs,
   captureLogs = false,
+  adaptersDir,
+  adapterHost,
 }: TestHubOptions = {}) {
   const logs: string[] = [];
   const sqlite = openSqlite(':memory:');
@@ -95,6 +99,8 @@ export function createTestHub({
       idleMs: 5,
       keepAliveMs,
       setupCode: SETUP_CODE,
+      ...(adaptersDir ? { adaptersDir } : {}),
+      ...(adapterHost ? { adapterHost } : {}),
       ...(captureLogs
         ? { logger: { level: 'trace', stream: { write: (line: string) => void logs.push(line) } } }
         : {}),
@@ -107,6 +113,9 @@ export function createTestHub({
     },
     get db() {
       return hub.db;
+    },
+    get ready() {
+      return hub.ready;
     },
     sqlite,
     send,
@@ -132,7 +141,13 @@ export function createTestHub({
 
 export type TestHub = ReturnType<typeof createTestHub>;
 
-export function postHook(hub: TestHub, body: unknown, { token = SOURCE_TOKEN, sourceId = SOURCE_ID } = {}) {
+// Waits for the adapters first, so a busy machine does not stretch the wait for the result.
+export async function postHook(
+  hub: TestHub,
+  body: unknown,
+  { token = SOURCE_TOKEN, sourceId = SOURCE_ID } = {},
+) {
+  await hub.ready;
   return hub.app.inject({
     method: 'POST',
     url: `/hook/${sourceId}/${token}`,

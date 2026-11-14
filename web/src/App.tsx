@@ -1,5 +1,6 @@
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router';
 import { RequireSession } from './components/Layout';
+import { AdaptersPage } from './pages/AdaptersPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DiscardedPage } from './pages/DiscardedPage';
 import { LogPage } from './pages/LogPage';
@@ -23,6 +24,7 @@ const router = createBrowserRouter([
       { path: '/routing', element: <RoutingPage /> },
       { path: '/discarded', element: <DiscardedPage /> },
       { path: '/muted', element: <MutedPage /> },
+      { path: '/adapters', element: <AdaptersPage /> },
       { path: '/settings', element: <SettingsPage /> },
       { path: '*', element: <Navigate to="/dashboard" replace /> },
     ],

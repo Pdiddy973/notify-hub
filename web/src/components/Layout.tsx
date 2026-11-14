@@ -48,6 +48,7 @@ const pages = [
   { to: '/routing', label: 'Routing' },
   { to: '/muted', label: 'Muted' },
   { to: '/discarded', label: 'Discarded' },
+  { to: '/adapters', label: 'Adapters' },
   { to: '/settings', label: 'Settings' },
 ];
 

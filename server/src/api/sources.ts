@@ -2,7 +2,6 @@ import {
   createSourceSchema,
   sourceParamsSchema,
   updateSourceSchema,
-  type AdapterInfo,
   type SourceDetail,
   type SourceSummary,
   type SourceUrl,
@@ -43,26 +42,38 @@ export function registerSourceRoutes(
     const row = db.listSources().find((source) => source.id === id);
     if (!row) throw new ApiProblem(404, 'Source not found');
     const adapter = adapters.get(row.type);
+    const problem = adapterProblem(row.type);
     return {
       ...summary(row),
       ...(adapter ? { adapterName: adapter.name } : {}),
       ...(adapter?.help ? { help: adapter.help } : {}),
+      ...(problem ? { adapterProblem: problem } : {}),
     };
+  };
+
+  const adapterProblem = (type: string): string | undefined => {
+    const info = adapters.list().adapters.find((item) => item.id === type && item.active);
+    if (!info) return `There is no ${type} adapter, so webhooks for this source become adapter errors.`;
+    if (info.status === 'error') {
+      return `The ${info.file} adapter file has a problem; the last working version keeps running.`;
+    }
+    if (info.status === 'samples-failing') return `Some samples of the ${info.file} adapter fail.`;
+    return undefined;
   };
 
   const sourceId = (params: unknown) => parseWith(sourceParamsSchema, params).id;
 
-  api.get('/adapters', async (): Promise<AdapterInfo[]> =>
-    adapters.list().map(({ id, name, help }) => ({ id, name, ...(help ? { help } : {}) })),
-  );
-
   api.get('/sources', async (): Promise<SourceSummary[]> => db.listSources().map(summary));
 
-  api.get('/sources/:id', async (request): Promise<SourceDetail> => detail(sourceId(request.params)));
+  api.get('/sources/:id', async (request): Promise<SourceDetail> => {
+    await adapters.ready;
+    return detail(sourceId(request.params));
+  });
 
   // The token is generated here and never accepted from the browser.
   api.post('/sources', async (request, reply) => {
     const { id, name, type } = parseWith(createSourceSchema, request.body);
+    await adapters.ready;
     if (!adapters.get(type)) {
       throw new ApiProblem(400, 'Pick a type', [{ path: 'type', message: `There is no ${type} adapter` }]);
     }
@@ -112,6 +123,7 @@ export function registerSourceRoutes(
     if (!source) throw new ApiProblem(404, 'Source not found');
     if (!source.enabled)
       throw new ApiProblem(409, 'Turn the source on first; it discards webhooks while off');
+    await adapters.ready;
     const adapter = adapters.get(source.type);
     const sample = adapter?.samples[0];
     if (!adapter || !sample) throw new ApiProblem(409, `The ${source.type} adapter has no sample to send`);
@@ -128,7 +140,7 @@ export function registerSourceRoutes(
           ? 'application/x-www-form-urlencoded'
           : 'text/plain';
     const messageId = ingest.accept(source, {
-      headers: { 'content-type': contentType, 'user-agent': 'notify-hub test button' },
+      headers: { ...sample.headers, 'content-type': contentType, 'user-agent': 'notify-hub test button' },
       body,
       contentType,
     });

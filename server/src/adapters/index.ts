@@ -1,44 +1,25 @@
-import type { AdapterMessage } from '@notify-hub/shared';
-import { standardAdapter } from './standard.js';
+import type { ParseFormat } from './definition.js';
 
-export type { AdapterMessage };
-
-export interface AdapterInput {
-  body: unknown;
-  headers: Record<string, string>;
-  config: Record<string, unknown>;
-}
-
-// The required fields of the adapter file format (PLAN.md section 7).
-export interface Adapter {
-  id: string;
-  name: string;
-  parse: 'json' | 'form' | 'text';
-  // An empty array means the event is ignored on purpose.
-  normalize(input: AdapterInput): AdapterMessage[];
-  samples: { name: string; body: unknown }[];
-  // Setup instructions shown on the source page, as plain text.
-  help?: string;
-}
-
-export interface AdapterRegistry {
-  get(id: string): Adapter | undefined;
-  // Sorted by name.
-  list(): Adapter[];
-}
-
-export function createRegistry(adapters: Adapter[]): AdapterRegistry {
-  const byId = new Map(adapters.map((adapter) => [adapter.id, adapter]));
-  return {
-    get: (id) => byId.get(id),
-    list: () => [...byId.values()].sort((a, b) => a.name.localeCompare(b.name)),
-  };
-}
-
-export const builtInAdapters: Adapter[] = [standardAdapter];
+export {
+  adapterFileSchema,
+  configWithDefaults,
+  type AdapterDefinition,
+  type AdapterInput,
+  type ParseFormat,
+} from './definition.js';
+export { AdapterHostClosed, ADAPTER_MEMORY_MB, ADAPTER_TIMEOUT_MS } from './host.js';
+export {
+  adapterTemplateFile,
+  builtInAdapterDir,
+  createAdapterLoader,
+  type AdapterLoaderOptions,
+  type AdapterRegistry,
+  type LoadedAdapter,
+  type SampleResult,
+} from './loader.js';
 
 // Turns a stored raw payload into the body an adapter receives.
-export function parseBody(raw: string, format: Adapter['parse']): unknown {
+export function parseBody(raw: string, format: ParseFormat): unknown {
   switch (format) {
     case 'json':
       return JSON.parse(raw) as unknown;

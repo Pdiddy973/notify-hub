@@ -1,0 +1,16 @@
+{
+  "release": {
+    "releaseTitle": "Heart.of.the.Beast.2026.1080p.REPACK.iT.WEB-DL.DDP5.1.Atmos.H.264-GTM",
+    "indexer": "Indexer A",
+    "categories": [],
+    "genres": [],
+    "indexerFlags": [],
+    "publishDate": "0001-01-01T00:00:00Z"
+  },
+  "trigger": "api",
+  "source": "Radarr",
+  "host": "172.18.0.1",
+  "eventType": "Grab",
+  "instanceName": "Prowlarr",
+  "applicationUrl": ""
+}

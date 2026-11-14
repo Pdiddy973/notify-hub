@@ -1,4 +1,5 @@
 import type {
+  AdapterStatus,
   DeliveryStatus,
   DiscardReason,
   Embed,
@@ -149,6 +150,14 @@ export const settingKeys = {
   setupCompletedAt: 'setup.completedAt',
 } as const;
 
+export interface AdapterState {
+  id: string;
+  filePath: string;
+  version?: number;
+  loadStatus: AdapterStatus;
+  lastError?: string;
+}
+
 export type MessageChanges = Partial<Pick<StoredMessage, 'status' | 'normalized' | 'error'>>;
 
 // Storage used by the backend modules; the bot never receives it.
@@ -246,6 +255,12 @@ export interface Database {
   pruneAddressBlocks(now: string): number;
   // Removes sessions that expired before the given time.
   pruneSessions(now: string): number;
+
+  // Approved permissions per adapter id.
+  adapterApprovals(): Map<string, string[]>;
+  // Records the load result of the adapter in use for an id; approvals are kept.
+  saveAdapterState(state: AdapterState): void;
+  setAdapterApprovals(id: string, approved: string[]): void;
 }
 
 export { createSqliteDatabase, openSqlite, type SqliteHandle } from './sqlite.js';
