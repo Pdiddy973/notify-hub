@@ -240,9 +240,9 @@ An adapter turns one service's raw request into standard messages. Each adapter 
 
 | Service | How it sends | Notes |
 | --- | --- | --- |
-| Sonarr | Settings, Connect, Webhook | Grab, import, upgrade, rename, health, and test events |
-| Radarr | Settings, Connect, Webhook | Same as Sonarr with movie fields |
-| Prowlarr | Settings, Connect, Webhook | Health and application-update events |
+| Sonarr | Settings, Connect, Webhook | Built in. Grab, import, upgrade, import-complete, rename, health, health-restored, and test; other events keep their own name |
+| Radarr | Settings, Connect, Webhook | Built in. Grab, import, upgrade, movie-added, rename, health, health-restored, and test |
+| Prowlarr | Settings, Notifications, Webhook | Built in. Grab, health, health-restored, and test |
 | Plex | Webhooks (needs Plex Pass) | Multipart form with a JSON `payload` field; play, stop, new library item |
 | SABnzbd | Notification script or Apprise | A short script posts JSON to the hub |
 | Proxmox | Notification target of type webhook | Paste the recommended body template |
