@@ -1,0 +1,34 @@
+{
+  "movie": {
+    "id": 2526,
+    "title": "Heart of the Beast",
+    "year": 2026,
+    "releaseDate": "2026-12-22",
+    "folderPath": "/data/Movies/Heart of the Beast (2026) {imdb-tt7526136}",
+    "tmdbId": 1263337,
+    "imdbId": "tt7526136",
+    "overview": "After a harrowing plane crash, Special Forces officer James Belmont and his combat dog, Odin, find themselves stranded deep in the Alaskan wilderness. Together, they are forced into a brutal fight for survival against the elements.",
+    "genres": ["Adventure", "Thriller"],
+    "images": [
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/2526/poster.jpg?h=1a26303b2eb68503cd62",
+        "remoteUrl": "https://image.tmdb.org/t/p/original/6sYemVUn79UPKz1ZsSG6kPU4RVy.jpg"
+      },
+      {
+        "coverType": "fanart",
+        "url": "/MediaCover/2526/fanart.jpg?h=adb9af23cafe22f34ae2",
+        "remoteUrl": "https://image.tmdb.org/t/p/original/6uVRPFflyJpo8Cx872olmlGTWla.jpg"
+      }
+    ],
+    "tags": ["1-user3"],
+    "originalLanguage": {
+      "id": 1,
+      "name": "English"
+    }
+  },
+  "addMethod": "manual",
+  "eventType": "MovieAdded",
+  "instanceName": "Radarr",
+  "applicationUrl": ""
+}

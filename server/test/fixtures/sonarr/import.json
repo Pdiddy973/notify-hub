@@ -1,0 +1,148 @@
+{
+  "series": {
+    "id": 682,
+    "title": "The Witcher",
+    "titleSlug": "the-witcher",
+    "path": "/data/TV-Shows/The Witcher (2019) {imdb-tt5180504}",
+    "tvdbId": 362696,
+    "tvMazeId": 28276,
+    "tmdbId": 71912,
+    "imdbId": "tt5180504",
+    "type": "standard",
+    "year": 2019,
+    "genres": ["Action", "Adventure", "Drama", "Fantasy", "Mystery"],
+    "images": [
+      {
+        "coverType": "banner",
+        "url": "/MediaCover/682/banner.jpg?lastWrite=639301412107663579",
+        "remoteUrl": "https://artworks.thetvdb.com/banners/v4/series/362696/banners/61c5eb5d4f188.jpg"
+      },
+      {
+        "coverType": "poster",
+        "url": "/MediaCover/682/poster.jpg?lastWrite=639301412107983578",
+        "remoteUrl": "https://artworks.thetvdb.com/banners/v4/series/362696/posters/6447fd2e14bd2.jpg"
+      },
+      {
+        "coverType": "fanart",
+        "url": "/MediaCover/682/fanart.jpg?lastWrite=639301412108463577",
+        "remoteUrl": "https://artworks.thetvdb.com/banners/v4/series/362696/backgrounds/6497d1cda9d2d.jpg"
+      },
+      {
+        "coverType": "clearlogo",
+        "url": "/MediaCover/682/clearlogo.png?lastWrite=639301412108703576",
+        "remoteUrl": "https://artworks.thetvdb.com/banners/v4/series/362696/clearlogo/611badce46c9e.png"
+      }
+    ],
+    "tags": ["11-user1"],
+    "originalLanguage": {
+      "id": 1,
+      "name": "English"
+    }
+  },
+  "episodes": [
+    {
+      "id": 43949,
+      "episodeNumber": 4,
+      "seasonNumber": 3,
+      "title": "The Invitation",
+      "overview": "Yennefer pitches a bold idea to the Brotherhood, Geralt strikes a dangerous deal with a ferryman, and Triss digs into the mystery of the missing novices.",
+      "airDate": "2023-06-29",
+      "airDateUtc": "2023-06-29T07:00:00Z",
+      "seriesId": 682,
+      "tvdbId": 9765176
+    }
+  ],
+  "episodeFile": {
+    "id": 33307,
+    "relativePath": "The Witcher (2019) - S03E04 - The Invitation [NF][WEBDL-1080p][EAC3 Atmos 5.1][x264]-NTb.mkv",
+    "path": "/data/TV-Shows/The Witcher (2019) {imdb-tt5180504}/The Witcher (2019) - S03E04 - The Invitation [NF][WEBDL-1080p][EAC3 Atmos 5.1][x264]-NTb.mkv",
+    "quality": "WEBDL-1080p",
+    "qualityVersion": 1,
+    "releaseGroup": "NTb",
+    "sceneName": "The.Witcher.S03E04.1080p.NF.WEB-DL.DDPA5.1.H.264-NTb",
+    "size": 2251251031,
+    "dateAdded": "2026-11-14T21:08:15.8410965Z",
+    "languages": [
+      {
+        "id": 1,
+        "name": "English"
+      }
+    ],
+    "mediaInfo": {
+      "audioChannels": 5.1,
+      "audioCodec": "EAC3 Atmos",
+      "audioLanguages": ["eng"],
+      "height": 1080,
+      "width": 1920,
+      "subtitles": [
+        "eng",
+        "ara",
+        "cat",
+        "cze",
+        "dan",
+        "ger",
+        "gre",
+        "spa",
+        "baq",
+        "fin",
+        "fil",
+        "fre",
+        "glg",
+        "heb",
+        "hrv",
+        "hun",
+        "ind",
+        "ita",
+        "jpn",
+        "kor",
+        "may",
+        "nob",
+        "dut",
+        "pol",
+        "por",
+        "rum",
+        "rus",
+        "swe",
+        "tha",
+        "tur",
+        "ukr",
+        "vie",
+        "chi"
+      ],
+      "videoCodec": "x264",
+      "videoDynamicRange": "",
+      "videoDynamicRangeType": ""
+    },
+    "sourcePath": "/data/usenet/complete/The.Witcher.S03E04.1080p.NF.WEB-DL.DDPA5.1.H.264-NTb/The.Witcher.S03E04.The.Invitation.1080p.NF.WEB-DL.DDP5.1.x264-NTb.mkv"
+  },
+  "isUpgrade": false,
+  "downloadClient": "SABnzbd",
+  "downloadClientType": "SABnzbd",
+  "downloadId": "00000000-0000-4000-8000-000000000002",
+  "customFormatInfo": {
+    "customFormats": [
+      {
+        "id": 71,
+        "name": "DD+ ATMOS"
+      },
+      {
+        "id": 35,
+        "name": "NF"
+      },
+      {
+        "id": 11,
+        "name": "WEB Tier 01"
+      }
+    ],
+    "customFormatScore": 4775
+  },
+  "release": {
+    "releaseTitle": "The.Witcher.S03E04.1080p.NF.WEB-DL.DDPA5.1.H.264-NTb",
+    "indexer": "Indexer B (Prowlarr)",
+    "size": 2408703772,
+    "releaseType": "singleEpisode"
+  },
+  "eventType": "Download",
+  "instanceName": "Sonarr",
+  "applicationUrl": ""
+}
