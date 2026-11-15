@@ -257,6 +257,7 @@ An adapter turns one service's raw request into standard messages. Each adapter 
 
 The hub copies a commented `_template.js` into the adapters folder on first start. Copy it to a new name such as `my-service.js`, then change `id`, `name`, `normalize`, and `samples`. A New adapter button and `npm run new-adapter <name>` are planned.
 
+- `adapters/examples/log-only.js` in the repository stores whatever a service sends as a debug message, with the raw payload in the log. Copy it into the adapters folder and give a new service the type Log only to see its payloads before writing an adapter.
 - Files starting with an underscore are never loaded as adapters, but adapters can import them as shared helpers.
 - An adapter can import only files inside the adapters folder: no npm packages and no `node:` modules.
 - Files can be JavaScript (`.js`, `.mjs`) or TypeScript (`.ts`).
