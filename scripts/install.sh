@@ -41,9 +41,11 @@ github() {
 check_system() {
   [[ $EUID -eq 0 ]] || die "run this as root"
   [[ -r /etc/os-release ]] || die "cannot read /etc/os-release"
+  # Read in a subshell: os-release also sets VERSION, which would replace the release tag.
+  local os_id
   # shellcheck source=/dev/null
-  . /etc/os-release
-  [[ "${ID:-}" == debian || "${ID:-}" == ubuntu ]] || die "needs Debian or Ubuntu, found ${ID:-unknown}"
+  os_id="$(. /etc/os-release && printf '%s' "${ID:-}")"
+  [[ "$os_id" == debian || "$os_id" == ubuntu ]] || die "needs Debian or Ubuntu, found ${os_id:-unknown}"
   command -v systemctl >/dev/null || die "needs systemd"
 }
 
